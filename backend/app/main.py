@@ -185,8 +185,8 @@ def download_history_result(result_id: str):
 def delete_results(payload: DeleteResultsPayload):
     try:
         return manager.delete_results(payload.ids, payload.password)
-    except PermissionError:
-        raise HTTPException(status_code=403, detail="Senha inválida")
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e))
 
 
 @app.get("/api/logs/sessions")
@@ -210,5 +210,5 @@ class ClearLogsPayload(BaseModel):
 def clear_logs(payload: ClearLogsPayload):
     try:
         return manager.clear_logs(payload.password)
-    except PermissionError:
-        raise HTTPException(status_code=403, detail="Senha inválida")
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e))

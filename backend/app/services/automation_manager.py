@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import configparser
 import json
+import os
 import re
 import shutil
 import threading
@@ -225,9 +226,7 @@ class AutomationManager:
                 return []
 
     def delete_results(self, ids: list[str], password: str) -> dict:
-        cfg = self.load_config()
-        if password != cfg.senha:
-            raise PermissionError("Senha inválida")
+        self._validate_admin_reset_password(password)
 
         with self._history_lock:
             history = self.list_results_history()
@@ -299,12 +298,17 @@ class AutomationManager:
         return next((s for s in sessions if s.get("id") == session_id), None)
 
     def clear_logs(self, password: str) -> dict:
-        cfg = self.load_config()
-        if password != cfg.senha:
-            raise PermissionError("Senha inválida")
+        self._validate_admin_reset_password(password)
         with self._history_lock:
             LOGS_HISTORY_PATH.write_text("[]", encoding="utf-8")
         return {"cleared": True}
+
+    def _validate_admin_reset_password(self, password: str) -> None:
+        admin_password = os.getenv("ADMIN_RESET_PASSWORD", "").strip()
+        if not admin_password:
+            raise PermissionError("ADMIN_RESET_PASSWORD não configurada no ambiente.")
+        if password != admin_password:
+            raise PermissionError("Senha inválida")
 
     def _must_get(self, job_id: str) -> JobRuntime:
         job = self.get_job(job_id)
