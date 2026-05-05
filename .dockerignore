@@ -1,0 +1,30 @@
+# =============================
+# Docker build context (conservador)
+# =============================
+
+# Git / editor metadata
+.git/
+.vscode/
+.idea/
+
+# Python cache
+**/__pycache__/
+**/*.py[cod]
+
+# Ambientes e build local
+.venv/
+venv/
+dist/
+build/
+
+# Frontend pesado (mantendo web source no contexto)
+web/node_modules/
+web/dist/
+
+# Temporários/artefatos locais
+*.log
+*.tmp
+*_processado.xlsx
+*_tmp*.xlsx
+
+# (Importante) Não excluir backend/, Conectividade/, config.ini, docker-compose.yml

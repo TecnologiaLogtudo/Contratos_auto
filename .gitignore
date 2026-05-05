@@ -1,0 +1,41 @@
+# =============================
+# Projeto: Contratos_auto
+# Política: backend deploy first (restritivo)
+# =============================
+
+# Frontend fora do versionamento neste momento
+web/
+
+# Ambientes virtuais
+.venv/
+venv/
+
+# Cache Python
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# IDE / editor
+.vscode/
+.idea/
+
+# Artefatos operacionais backend
+backend/app/data/uploads/
+backend/app/data/results/
+backend/app/data/artifacts/
+backend/app/data/logs_history.json
+backend/app/data/results_history.json
+
+# Temporários grandes e logs
+*_processado.xlsx
+*_tmp*.xlsx
+*.log
+*.tmp
+
+# Segredos e configs locais
+.env
+.env.*
+config.ini
