@@ -1,0 +1,35 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: logtudo-app
+    ipc: host
+    security_opt:
+      - seccomp=./backend/seccomp-playwright.json
+    restart: unless-stopped
+    environment:
+      - TZ=America/Sao_Paulo
+      - PLAYWRIGHT_HEADLESS=true
+    volumes:
+      - app_data:/app/backend/app/data
+    expose:
+      - "8000"
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.logtudo-cotacoes.rule=Host(`logtudo.com.br`) && PathPrefix(`/cotacoes`)
+      - traefik.http.routers.logtudo-cotacoes.entrypoints=http,https
+      - traefik.http.routers.logtudo-cotacoes.middlewares=logtudo-cotacoes-strip
+      - traefik.http.middlewares.logtudo-cotacoes-strip.stripprefix.prefixes=/cotacoes
+      - traefik.http.services.logtudo-cotacoes.loadbalancer.server.port=8000
+      - coolify.managed=true
+      - coolify.proxy=true
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health')\" || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    command: ["uvicorn", "backend.app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+
+volumes:
+  app_data:
