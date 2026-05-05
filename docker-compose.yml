@@ -3,7 +3,7 @@ services:
     build:
       context: .
       dockerfile: backend/Dockerfile
-    container_name: logtudo-app
+    container_name: contratos-app
     ipc: host
     security_opt:
       - seccomp=./backend/seccomp-playwright.json
@@ -17,11 +17,11 @@ services:
       - "8000"
     labels:
       - traefik.enable=true
-      - traefik.http.routers.logtudo-cotacoes.rule=Host(`logtudo.com.br`) && PathPrefix(`/cotacoes`)
-      - traefik.http.routers.logtudo-cotacoes.entrypoints=http,https
-      - traefik.http.routers.logtudo-cotacoes.middlewares=logtudo-cotacoes-strip
-      - traefik.http.middlewares.logtudo-cotacoes-strip.stripprefix.prefixes=/cotacoes
-      - traefik.http.services.logtudo-cotacoes.loadbalancer.server.port=8000
+      - traefik.http.routers.logtudo-contratos.rule=Host(`logtudo.com.br`) && PathPrefix(`/contratos`)
+      - traefik.http.routers.logtudo-contratos.entrypoints=http,https
+      - traefik.http.routers.logtudo-contratos.middlewares=logtudo-contratos-strip
+      - traefik.http.middlewares.logtudo-contratos-strip.stripprefix.prefixes=/contratos
+      - traefik.http.services.logtudo-contratos.loadbalancer.server.port=8000
       - coolify.managed=true
       - coolify.proxy=true
     healthcheck:
