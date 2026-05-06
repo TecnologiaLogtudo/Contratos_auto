@@ -53,9 +53,10 @@ app.add_middleware(
 
 web_dir = Path(__file__).parent.parent.parent / "web"
 index_path = web_dir / "index.html"
-assets_dir = web_dir / "assets"
+asset_dir_candidates = [web_dir / "assets", web_dir / "dist" / "assets"]
+assets_dir = next((p for p in asset_dir_candidates if p.exists()), None)
 
-if assets_dir.exists():
+if assets_dir:
     app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="web-assets")
     if BASE_PATH:
         app.mount(f"{BASE_PATH}/assets", StaticFiles(directory=str(assets_dir)), name="web-assets-basepath")
