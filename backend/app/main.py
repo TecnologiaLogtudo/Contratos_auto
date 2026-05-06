@@ -57,6 +57,8 @@ assets_dir = web_dir / "assets"
 
 if assets_dir.exists():
     app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="web-assets")
+    if BASE_PATH:
+        app.mount(f"{BASE_PATH}/assets", StaticFiles(directory=str(assets_dir)), name="web-assets-basepath")
 
 
 def _render_index_html() -> HTMLResponse:
@@ -75,6 +77,11 @@ def _render_index_html() -> HTMLResponse:
 @app.get("/health")
 def health() -> dict:
     return {"status": "ok"}
+
+
+@app.get("/health/ready")
+def health_ready() -> dict:
+    return {"status": "ready"}
 
 
 @app.get("/api/config", response_model=AutomationConfig)
