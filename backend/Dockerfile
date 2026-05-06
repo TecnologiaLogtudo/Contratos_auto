@@ -1,17 +1,3 @@
-FROM node:20-alpine AS web-builder
-
-ARG VITE_APP_BASE_PATH=/contratos/
-ARG VITE_API_BASE_URL=/contratos
-ENV VITE_APP_BASE_PATH=${VITE_APP_BASE_PATH}
-ENV VITE_API_BASE_URL=${VITE_API_BASE_URL}
-
-WORKDIR /web-build
-COPY web/package.json web/package-lock.json ./
-RUN npm ci
-
-COPY web ./
-RUN npm run build
-
 FROM python:3.12-slim AS builder
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -40,7 +26,6 @@ RUN pip install --no-cache-dir --no-index --find-links=/wheels -r /tmp/requireme
 
 COPY backend /app/backend
 COPY Conectividade /app/Conectividade
-COPY --from=web-builder /web-build/dist /app/web
 COPY config.ini /app/config.ini
 
 RUN useradd -m -u 1001 appuser && \
