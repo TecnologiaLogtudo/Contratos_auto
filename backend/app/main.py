@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import tempfile
 from pathlib import Path
 
@@ -9,6 +10,11 @@ from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
+
+BASE_PATH = os.getenv('BASE_PATH', '').strip()
+if BASE_PATH and not BASE_PATH.startswith('/'):
+    BASE_PATH = f'/{BASE_PATH}'
+BASE_PATH = BASE_PATH.rstrip('/') if BASE_PATH and BASE_PATH != '/' else ''
 
 from .schemas import AutomationConfig, JobInfo, PreviewResponse
 from .services.automation_manager import manager
@@ -19,7 +25,15 @@ class DeleteResultsPayload(BaseModel):
     password: str
 
 
-app = FastAPI(title="LogTudo Automacao API", version="1.0.0")
+app = FastAPI(title="LogTudo Automacao API", version="1.0.0", root_path=BASE_PATH or "")
+
+if BASE_PATH:
+    @app.middleware("http")
+    async def strip_base_path_middleware(request: Request, call_next):
+        if request.scope.get("path", "").startswith(BASE_PATH):
+            request.scope["root_path"] = BASE_PATH
+            request.scope["path"] = request.scope["path"][len(BASE_PATH):] or "/"
+        return await call_next(request)
 
 app.add_middleware(
     CORSMiddleware,

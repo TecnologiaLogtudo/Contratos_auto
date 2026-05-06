@@ -12,13 +12,14 @@ services:
       - TZ=America/Sao_Paulo
       - PLAYWRIGHT_HEADLESS=true
       - ADMIN_RESET_PASSWORD=${ADMIN_RESET_PASSWORD}
+      - BASE_PATH=/contratos
     volumes:
       - app_data:/app/backend/app/data
     expose:
       - "8000"
     labels:
       - traefik.enable=true
-      - traefik.http.routers.logtudo-contratos.rule=Host(`logtudo.com.br`) && PathPrefix(`/contratos`)
+      - traefik.http.routers.logtudo-contratos.rule=Host(`automacao.logtudo.com.br`) && PathPrefix(`/contratos`)
       - traefik.http.routers.logtudo-contratos.entrypoints=http,https
       - traefik.http.routers.logtudo-contratos.middlewares=logtudo-contratos-strip
       - traefik.http.middlewares.logtudo-contratos-strip.stripprefix.prefixes=/contratos

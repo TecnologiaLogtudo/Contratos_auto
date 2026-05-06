@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 
-const API_BASE = ''
 const LEVELS = ['TODOS', 'INFO', 'DEBUG', 'AVISO', 'ERRO', 'SUCESSO', 'FASE']
 const MENU_ITEMS = ['Processamento', 'Resultados', 'Manual', 'Logs']
 
@@ -14,7 +13,11 @@ const initialConfig = {
 }
 
 export default function App() {
-  const isManualPage = typeof window !== 'undefined' && window.location.pathname === '/manual'
+  const rawBasePath = import.meta.env.VITE_BASE_PATH || ''
+  const basePath = rawBasePath.replace(/\/+$|^\s+|\s+$/g, '')
+  const API_BASE = basePath
+  const manualRoute = `${basePath}/manual`.replace(/\/+/g, '/')
+  const isManualPage = typeof window !== 'undefined' && window.location.pathname.replace(/\/+$/, '') === manualRoute
   const [config, setConfig] = useState(initialConfig)
   const [file, setFile] = useState(null)
   const [preview, setPreview] = useState(null)
@@ -93,6 +96,11 @@ export default function App() {
     const taxa = total ? Math.round((sucessos / total) * 100) : 0
     return { sucessos, erros, pendentes, taxa }
   }, [history])
+
+  function withBasePath(path) {
+    const normalized = path.startsWith('/') ? path : `/${path}`
+    return `${basePath}${normalized}`.replace(/\/+/g, '/')
+  }
 
   async function loadHistory() {
     const r = await fetch(`${API_BASE}/api/results/history`)
@@ -605,7 +613,7 @@ export default function App() {
             className={`menu-btn ${activeMenu === item ? 'active' : ''}`}
             onClick={() => {
               if (item === 'Manual') {
-                window.open('/manual', '_blank', 'noopener,noreferrer')
+                window.open(withBasePath('/manual'), '_blank', 'noopener,noreferrer')
                 return
               }
               setActiveMenu(item)
