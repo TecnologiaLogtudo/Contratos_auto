@@ -6,9 +6,10 @@ import os
 import tempfile
 from pathlib import Path
 
-from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Request, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 BASE_PATH = os.getenv('BASE_PATH', '').strip()
@@ -42,6 +43,21 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Mount static files if web directory exists
+web_dir = Path(__file__).parent.parent.parent / "web"
+if web_dir.exists():
+    app.mount("/", StaticFiles(directory=str(web_dir), html=True), name="web")
+
+    @app.get("/")
+    async def serve_index():
+        index_path = web_dir / "index.html"
+        if index_path.exists():
+            content = index_path.read_text(encoding="utf-8")
+            # Inject BASE_PATH into the HTML
+            content = content.replace("__LOGTUDO_BASE_PATH__", BASE_PATH or "")
+            return HTMLResponse(content)
+        return {"error": "index.html not found"}
 
 
 @app.get("/health")

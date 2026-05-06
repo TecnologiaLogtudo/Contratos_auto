@@ -26,6 +26,7 @@ RUN pip install --no-cache-dir --no-index --find-links=/wheels -r /tmp/requireme
 
 COPY backend /app/backend
 COPY Conectividade /app/Conectividade
+COPY web /app/web
 COPY config.ini /app/config.ini
 
 RUN useradd -m -u 1001 appuser && \
