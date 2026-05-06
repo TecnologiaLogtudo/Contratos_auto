@@ -31,6 +31,11 @@ app = FastAPI(title="LogTudo Automacao API", version="1.0.0", root_path=BASE_PAT
 if BASE_PATH:
     @app.middleware("http")
     async def strip_base_path_middleware(request: Request, call_next):
+        # Skip middleware for health checks accessed directly (without BASE_PATH)
+        if request.scope.get("path", "") == "/health":
+            return await call_next(request)
+        
+        # Process requests with BASE_PATH prefix
         if request.scope.get("path", "").startswith(BASE_PATH):
             request.scope["root_path"] = BASE_PATH
             request.scope["path"] = request.scope["path"][len(BASE_PATH):] or "/"
