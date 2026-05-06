@@ -14,7 +14,10 @@ const initialConfig = {
 
 export default function App() {
   const rawBasePath = (typeof window !== 'undefined' && window.LOGTUDO_BASE_PATH) || ''
-  const basePath = rawBasePath.replace(/\/+$|^\s+|\s+$/g, '').replace(/\/+/g, '/')
+  const normalizedRawBasePath = String(rawBasePath).trim()
+  const basePath = (normalizedRawBasePath.includes('__LOGTUDO_BASE_PATH__') ? '' : normalizedRawBasePath)
+    .replace(/\/+$|^\s+|\s+$/g, '')
+    .replace(/\/+/g, '/')
   const envApiBase = (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_API_BASE_URL ? String(import.meta.env.VITE_API_BASE_URL) : '')
     .trim()
     .replace(/\/+$/, '')
