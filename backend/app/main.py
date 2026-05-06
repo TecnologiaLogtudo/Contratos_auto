@@ -6,7 +6,7 @@ import os
 import tempfile
 from pathlib import Path
 
-from fastapi import FastAPI, File, Form, HTTPException, Request, Response, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -31,14 +31,16 @@ app = FastAPI(title="LogTudo Automacao API", version="1.0.0", root_path=BASE_PAT
 if BASE_PATH:
     @app.middleware("http")
     async def strip_base_path_middleware(request: Request, call_next):
-        # Skip middleware for health checks accessed directly (without BASE_PATH)
-        if request.scope.get("path", "") == "/health":
-            return await call_next(request)
-        
-        # Process requests with BASE_PATH prefix
-        if request.scope.get("path", "").startswith(BASE_PATH):
+        # Support proxy with and without StripPrefix. If Traefik strips "/contratos",
+        # we keep root_path for URL generation while preserving the stripped path.
+        scope_path = request.scope.get("path", "")
+        forwarded_prefix = request.headers.get("x-forwarded-prefix", "").strip()
+        if forwarded_prefix and forwarded_prefix.startswith("/"):
+            request.scope["root_path"] = forwarded_prefix.rstrip("/")
+
+        if scope_path.startswith(BASE_PATH):
             request.scope["root_path"] = BASE_PATH
-            request.scope["path"] = request.scope["path"][len(BASE_PATH):] or "/"
+            request.scope["path"] = scope_path[len(BASE_PATH):] or "/"
         return await call_next(request)
 
 app.add_middleware(
@@ -49,20 +51,25 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Mount static files if web directory exists
 web_dir = Path(__file__).parent.parent.parent / "web"
-if web_dir.exists():
-    app.mount("/", StaticFiles(directory=str(web_dir), html=True), name="web")
+index_path = web_dir / "index.html"
+assets_dir = web_dir / "assets"
 
-    @app.get("/")
-    async def serve_index():
-        index_path = web_dir / "index.html"
-        if index_path.exists():
-            content = index_path.read_text(encoding="utf-8")
-            # Inject BASE_PATH into the HTML
-            content = content.replace("__LOGTUDO_BASE_PATH__", BASE_PATH or "")
-            return HTMLResponse(content)
-        return {"error": "index.html not found"}
+if assets_dir.exists():
+    app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="web-assets")
+
+
+def _render_index_html() -> HTMLResponse:
+    if not index_path.exists():
+        raise HTTPException(status_code=404, detail="index.html not found")
+    content = index_path.read_text(encoding="utf-8")
+    base_script = f'<script>window.LOGTUDO_BASE_PATH = "{BASE_PATH or ""}";</script>'
+    if "window.LOGTUDO_BASE_PATH" not in content:
+        if "</head>" in content:
+            content = content.replace("</head>", f"  {base_script}\n  </head>")
+        else:
+            content = f"{base_script}\n{content}"
+    return HTMLResponse(content)
 
 
 @app.get("/health")
@@ -247,3 +254,20 @@ def clear_logs(payload: ClearLogsPayload):
         return manager.clear_logs(payload.password)
     except PermissionError as e:
         raise HTTPException(status_code=403, detail=str(e))
+
+
+@app.get("/")
+def serve_index():
+    return _render_index_html()
+
+
+@app.get("/manual")
+def serve_manual():
+    return _render_index_html()
+
+
+@app.get("/{full_path:path}")
+def spa_fallback(full_path: str):
+    if full_path.startswith(("api/", "health", "assets/")):
+        raise HTTPException(status_code=404, detail="Not found")
+    return _render_index_html()

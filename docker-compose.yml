@@ -3,6 +3,9 @@ services:
     build:
       context: .
       dockerfile: backend/Dockerfile
+      args:
+        VITE_APP_BASE_PATH: /contratos/
+        VITE_API_BASE_URL: /contratos
     container_name: contratos-app
     ipc: host
     security_opt:
@@ -13,6 +16,8 @@ services:
       - PLAYWRIGHT_HEADLESS=true
       - ADMIN_RESET_PASSWORD=${ADMIN_RESET_PASSWORD}
       - BASE_PATH=/contratos
+      - VITE_APP_BASE_PATH=/contratos/
+      - VITE_API_BASE_URL=/contratos
     volumes:
       - app_data:/app/backend/app/data
     expose:

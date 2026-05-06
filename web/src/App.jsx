@@ -15,7 +15,10 @@ const initialConfig = {
 export default function App() {
   const rawBasePath = (typeof window !== 'undefined' && window.LOGTUDO_BASE_PATH) || ''
   const basePath = rawBasePath.replace(/\/+$|^\s+|\s+$/g, '').replace(/\/+/g, '/')
-  const API_BASE = basePath
+  const envApiBase = (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_API_BASE_URL ? String(import.meta.env.VITE_API_BASE_URL) : '')
+    .trim()
+    .replace(/\/+$/, '')
+  const API_BASE = envApiBase || basePath
   const manualRoute = `${basePath}/manual`
   const isManualPage = typeof window !== 'undefined' && window.location.pathname.replace(/\/+$/, '') === manualRoute
   const [config, setConfig] = useState(initialConfig)
