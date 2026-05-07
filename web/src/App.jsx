@@ -637,7 +637,7 @@ export default function App() {
 
       <main className="content">
         <header className="topbar">
-          <div><h2>Faturamentos adicionais</h2><p>Operação central com logs em tempo real.</p></div>
+          <div><h2>Contratos de Frete</h2><p>Operação central com logs em tempo real.</p></div>
           <div className="top-actions"><button className="ghost" onClick={() => setActiveMenu('Logs')}>Mostrar Logs</button><button className="primary" onClick={startJob} disabled={loading || busyAction === 'start'}>{busyAction === 'start' ? 'Iniciando...' : 'Iniciar'}</button></div>
         </header>
 
