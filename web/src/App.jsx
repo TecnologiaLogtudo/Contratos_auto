@@ -27,7 +27,10 @@ export default function App() {
     .replace(/\/+$/, '')
   const API_BASE = envApiBase || basePath
   const manualRoute = `${basePath}/manual`
-  const isManualPage = typeof window !== 'undefined' && window.location.pathname.replace(/\/+$/, '') === manualRoute
+  const isManualPage = typeof window !== 'undefined' && (
+    window.location.pathname.replace(/\/+$/, '') === manualRoute ||
+    window.location.pathname.includes('/manual/')
+  )
   const [config, setConfig] = useState(initialConfig)
   const [file, setFile] = useState(null)
   const [preview, setPreview] = useState(null)
@@ -623,7 +626,7 @@ export default function App() {
             className={`menu-btn ${activeMenu === item ? 'active' : ''}`}
             onClick={() => {
               if (item === 'Manual') {
-                window.open(withBasePath('/manual/index.html'), '_blank', 'noopener,noreferrer')
+                window.open(withBasePath('/manual/'), '_blank', 'noopener,noreferrer')
                 return
               }
               setActiveMenu(item)
