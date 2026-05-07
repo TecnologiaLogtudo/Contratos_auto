@@ -13,11 +13,15 @@ const initialConfig = {
 }
 
 export default function App() {
-  const rawBasePath = (typeof window !== 'undefined' && window.LOGTUDO_BASE_PATH) || ''
-  const normalizedRawBasePath = String(rawBasePath).trim()
-  const basePath = (normalizedRawBasePath.includes('__LOGTUDO_BASE_PATH__') ? '' : normalizedRawBasePath)
-    .replace(/\/+$|^\s+|\s+$/g, '')
-    .replace(/\/+/g, '/')
+  const rawBasePath = (() => {
+    if (typeof window !== 'undefined' && window.LOGTUDO_BASE_PATH) return String(window.LOGTUDO_BASE_PATH)
+    if (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.BASE_URL) return String(import.meta.env.BASE_URL)
+    return ''
+  })()
+  const normalizedRawBasePath = rawBasePath.trim()
+  const basePath = normalizedRawBasePath === '/' || normalizedRawBasePath.includes('__LOGTUDO_BASE_PATH__')
+    ? ''
+    : normalizedRawBasePath.replace(/\/+/g, '/').replace(/\/$/, '')
   const envApiBase = (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_API_BASE_URL ? String(import.meta.env.VITE_API_BASE_URL) : '')
     .trim()
     .replace(/\/+$/, '')
@@ -619,7 +623,7 @@ export default function App() {
             className={`menu-btn ${activeMenu === item ? 'active' : ''}`}
             onClick={() => {
               if (item === 'Manual') {
-                window.open(withBasePath('/manual'), '_blank', 'noopener,noreferrer')
+                window.open(withBasePath('/manual/index.html'), '_blank', 'noopener,noreferrer')
                 return
               }
               setActiveMenu(item)
