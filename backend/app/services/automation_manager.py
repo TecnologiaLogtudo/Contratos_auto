@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Optional
 
 import openpyxl
+import xlrd
 
 from ..phases import (
     fase1_processamento,
@@ -142,22 +143,48 @@ class AutomationManager:
         return config
 
     def preview_file(self, file_path: Path) -> dict:
+        suffix = file_path.suffix.lower()
+        if suffix == ".xls":
+            return self._preview_xls(file_path)
+        return self._preview_xlsx(file_path)
+
+    def _preview_xlsx(self, file_path: Path) -> dict:
         wb = openpyxl.load_workbook(file_path, read_only=True, data_only=True)
-        ws = wb.active
-        headers_raw = [c.value for c in ws[1]] if ws.max_row > 0 else []
+        try:
+            ws = wb.active
+            headers_raw = [c.value for c in ws[1]] if ws.max_row > 0 else []
+            headers = [str(h) if h is not None else "" for h in headers_raw]
+            preview = []
+            for i, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=1):
+                if i > 10:
+                    break
+                row_dict = {}
+                for idx, value in enumerate(row):
+                    key = headers[idx] if idx < len(headers) and headers[idx] else f"col_{idx+1}"
+                    row_dict[key] = value
+                preview.append(row_dict)
+            rows = max(0, ws.max_row - 1)
+            cols = ws.max_column
+            return {"filename": file_path.name, "rows": rows, "cols": cols, "headers": headers, "preview": preview}
+        finally:
+            wb.close()
+
+    def _preview_xls(self, file_path: Path) -> dict:
+        wb = xlrd.open_workbook(str(file_path), formatting_info=False)
+        sheet = wb.sheet_by_index(0)
+        headers_raw = sheet.row_values(0) if sheet.nrows > 0 else []
         headers = [str(h) if h is not None else "" for h in headers_raw]
         preview = []
-        for i, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=1):
-            if i > 10:
-                break
+        max_preview = min(sheet.nrows, 11)
+        for row_idx in range(1, max_preview):
+            row = sheet.row_values(row_idx)
             row_dict = {}
             for idx, value in enumerate(row):
                 key = headers[idx] if idx < len(headers) and headers[idx] else f"col_{idx+1}"
                 row_dict[key] = value
             preview.append(row_dict)
-        rows = max(0, ws.max_row - 1)
-        cols = ws.max_column
-        wb.close()
+        rows = max(0, sheet.nrows - 1)
+        cols = sheet.ncols
         return {"filename": file_path.name, "rows": rows, "cols": cols, "headers": headers, "preview": preview}
 
     def create_job(self, source_file: Path, config: AutomationConfig, requester_ip: str = "") -> JobRuntime:
@@ -469,13 +496,23 @@ class AutomationManager:
         self._sleep_or_stop(job, atraso_fases)
 
     def _is_planilha_tratada(self, filepath: str) -> bool:
-        workbook = openpyxl.load_workbook(filepath, read_only=True)
-        sheet = workbook.active
-        headers_encontrados = [cell.value for cell in sheet[1]]
         headers_esperados = ["Nro cotação", "Categoria veículo", "Cidade", "UF", "Nome", "Placa", "Data pagamento", "Viagem extra", "Remetente", "Status"]
-        headers_limpos = [h for h in headers_encontrados if h is not None]
-        workbook.close()
-        return headers_limpos == headers_esperados
+        path = Path(filepath)
+        if path.suffix.lower() == ".xls":
+            wb = xlrd.open_workbook(filepath, formatting_info=False)
+            sheet = wb.sheet_by_index(0)
+            headers_encontrados = sheet.row_values(0) if sheet.nrows > 0 else []
+            headers_limpos = [h for h in headers_encontrados if h is not None and str(h).strip() != ""]
+            return headers_limpos == headers_esperados
+
+        workbook = openpyxl.load_workbook(filepath, read_only=True)
+        try:
+            sheet = workbook.active
+            headers_encontrados = [cell.value for cell in sheet[1]]
+            headers_limpos = [h for h in headers_encontrados if h is not None]
+            return headers_limpos == headers_esperados
+        finally:
+            workbook.close()
 
     def _ler_dados_planilha(self, job: JobRuntime) -> list[dict]:
         if not job.planilha_processada_path:

@@ -105,7 +105,10 @@ async def preview_file(file: UploadFile = File(...)):
         tmp_path = Path(tmp.name)
 
     try:
-        return manager.preview_file(tmp_path)
+        try:
+            return manager.preview_file(tmp_path)
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Não foi possível ler a planilha enviada: {e}")
     finally:
         tmp_path.unlink(missing_ok=True)
 

@@ -14,7 +14,9 @@ const initialConfig = {
 
 export default function App() {
   const rawBasePath = (() => {
-    if (typeof window !== 'undefined' && window.LOGTUDO_BASE_PATH) return String(window.LOGTUDO_BASE_PATH)
+    if (typeof window !== 'undefined' && Object.prototype.hasOwnProperty.call(window, 'LOGTUDO_BASE_PATH')) {
+      return String(window.LOGTUDO_BASE_PATH || '')
+    }
     if (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.BASE_URL) return String(import.meta.env.BASE_URL)
     return ''
   })()
