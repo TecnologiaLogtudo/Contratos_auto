@@ -33,7 +33,6 @@ export default function App() {
   )
   const [config, setConfig] = useState(initialConfig)
   const [file, setFile] = useState(null)
-  const [preview, setPreview] = useState(null)
   const [jobId, setJobId] = useState(null)
   const [job, setJob] = useState(null)
   const [logs, setLogs] = useState([])
@@ -166,20 +165,11 @@ export default function App() {
     const selected = evt.target.files?.[0]
     if (!selected) return
     setFile(selected)
-    const formData = new FormData()
-    formData.append('file', selected)
-    const r = await fetch(`${API_BASE}/api/preview`, { method: 'POST', body: formData })
-    if (!r.ok) {
-      notify('error', 'Arquivo inválido. Envie .xlsx ou .xls.')
-      return
-    }
-    setPreview(await r.json())
     notify('success', 'Planilha carregada com sucesso.')
   }
 
   function clearFile() {
     setFile(null)
-    setPreview(null)
     if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
@@ -226,6 +216,22 @@ export default function App() {
     setLoading(true)
     setBusyAction('start')
     setLogs([])
+
+    // Validate file format by attempting preview
+    const formData = new FormData()
+    formData.append('file', file)
+    const previewResponse = await fetch(`${API_BASE}/api/preview`, { method: 'POST', body: formData })
+    if (!previewResponse.ok) {
+      notify('error', 'Arquivo inválido. Envie .xlsx ou .xls.')
+      setLoading(false)
+      setBusyAction('')
+      return
+    }
+    const previewData = await previewResponse.json()
+    if (previewData.logs && previewData.logs.length) {
+      setLogs((prev) => [...prev, ...previewData.logs])
+    }
+
     const fd = new FormData()
     fd.append('file', file)
     fd.append('login', config.login)
@@ -329,7 +335,7 @@ export default function App() {
               <span>{file ? 'Trocar planilha' : 'Selecionar planilha'}</span>
             </label>
             <div className="file-meta-row">
-              <p className="muted">{preview ? `${preview.rows} linhas, ${preview.cols} colunas` : '0 linhas, 0 colunas'}</p>
+              <p className="muted">Arquivo selecionado</p>
               {file && <button className="ghost danger-outline" onClick={clearFile}>Remover planilha</button>}
             </div>
             {file && <p className="muted filename-inline">{file.name} <button className="mini-x" onClick={clearFile}>×</button></p>}
@@ -353,18 +359,6 @@ export default function App() {
             </div>
             <div className="config-actions-row"><button className="secondary" onClick={saveConfig} disabled={busyAction === 'save'}>{busyAction === 'save' ? 'Salvando...' : 'Salvar Configurações'}</button></div>
           </article>
-        </section>
-
-        <section className="card">
-          <div className="card-head"><h3>Pré-visualização</h3></div>
-          <div className="preview-table">
-            {preview?.preview?.length ? (
-              <table>
-                <thead><tr>{preview.headers.map((h, i) => <th key={i}>{h || `col_${i + 1}`}</th>)}</tr></thead>
-                <tbody>{preview.preview.map((row, idx) => <tr key={idx}>{Object.keys(row).map((k) => <td key={k}>{String(row[k] ?? '')}</td>)}</tr>)}</tbody>
-              </table>
-            ) : <p className="muted">Sem dados para pré-visualizar.</p>}
-          </div>
         </section>
 
         <section className="card">
@@ -545,7 +539,7 @@ export default function App() {
           <div className="manual-headline"><h4>3. 📄 Carregando planilha</h4><span className="manual-tag">Entrada de Dados</span></div>
           <ol>
             <li>No cartão <strong>Arquivo</strong>, clique em <strong>Selecionar planilha</strong>.</li>
-            <li>Escolha o arquivo e aguarde a pré-visualização aparecer.</li>
+            <li>Escolha o arquivo e aguarde a validação aparecer.</li>
             <li>Confira total de linhas e colunas antes de iniciar.</li>
             <li>Se enviou arquivo errado, use <strong>Remover planilha</strong> ou <strong>Trocar planilha</strong>.</li>
           </ol>
@@ -565,7 +559,7 @@ export default function App() {
         <article className="manual-section manual-monitor">
           <div className="manual-headline"><h4>5. 📡 Lendo os logs (tela Logs)</h4><span className="manual-tag">Monitoramento</span></div>
           <ol>
-            <li>Abra o menu <strong>Logs</strong> para foco total no monitoramento.</li>
+            <li>Abra the menu <strong>Logs</strong> para foco total no monitoramento.</li>
             <li>Filtre por nível (`INFO`, `AVISO`, `ERRO`, etc.) para investigar mais rápido.</li>
             <li>Ative/desative <strong>Auto-scroll</strong> conforme sua análise.</li>
             <li>Use <strong>Limpar</strong> quando quiser uma leitura nova e organizada.</li>
