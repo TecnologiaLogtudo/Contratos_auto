@@ -219,13 +219,13 @@ def preencher_contrato_frete(
 
         # ETAPA 9: Preencher Operação
         pause_event.wait()
-        log_callback(f"[F5] [Item {nro_cotacao}] Etapa 9: Preenchendo Operação 'PADRAO'...", "DEBUG")
-        # CORREÇÃO: O campo é um <select> com name="dados_operacaoRepom" e o valor para "PADRAO" é "1".
+        log_callback(f"[F5] [Item {nro_cotacao}] Etapa 9: Preenchendo Operação 'SEM CIOT'...", "DEBUG")
+        # CORREÇÃO: O campo é um <select> com name="dados_operacaoRepom" e o valor para "SEM CIOT" é "5".
         operacao_selector = 'select[name="dados_operacaoRepom"]'
-        option_padrao_selector = f'{operacao_selector} option[value="1"]'
-        log_callback(f"[F5] [Item {nro_cotacao}] Aguardando opção 'PADRAO' para Operação...", "DEBUG")
+        option_padrao_selector = f'{operacao_selector} option[value="5"]'
+        log_callback(f"[F5] [Item {nro_cotacao}] Aguardando opção 'SEM CIOT' para Operação...", "DEBUG")
         page.wait_for_selector(option_padrao_selector, state="attached", timeout=10000)
-        page.select_option(operacao_selector, value="1")
+        page.select_option(operacao_selector, value="5")
 
         time.sleep(atraso_etapas)
 
