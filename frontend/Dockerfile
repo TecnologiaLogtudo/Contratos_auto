@@ -16,7 +16,8 @@ FROM nginx:1.27-alpine
 COPY frontend/nginx.conf /etc/nginx/nginx.conf
 COPY --from=builder /build/dist /usr/share/nginx/html/contratos
 COPY frontend/entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
+RUN sed -i 's/\r$//' /entrypoint.sh && chmod +x /entrypoint.sh
+
 
 EXPOSE 80
 ENTRYPOINT ["/entrypoint.sh"]
