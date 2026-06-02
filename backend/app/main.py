@@ -68,6 +68,29 @@ if BASE_PATH:
     app.mount(f"{BASE_PATH}/artifacts", StaticFiles(directory=str(ARTIFACTS_DIR)), name="artifacts-static-basepath")
 
 
+@app.get("/artifacts/{filename:path}")
+@app.get("/contratos/artifacts/{filename:path}")
+def serve_artifact_file(filename: str):
+    file_path = ARTIFACTS_DIR / filename
+    if not file_path.exists() or not file_path.is_file():
+        raise HTTPException(status_code=404, detail="Arquivo de artefato nao encontrado")
+    
+    # Define o content-type correto
+    media_type = "application/octet-stream"
+    suffix = file_path.suffix.lower()
+    if suffix == ".png":
+        media_type = "image/png"
+    elif suffix in (".jpg", ".jpeg"):
+        media_type = "image/jpeg"
+    elif suffix == ".webm":
+        media_type = "video/webm"
+    elif suffix == ".mp4":
+        media_type = "video/mp4"
+        
+    return FileResponse(str(file_path), media_type=media_type)
+
+
+
 
 def _render_index_html() -> HTMLResponse:
     if not index_path.exists():
@@ -90,6 +113,29 @@ def health() -> dict:
 @app.get("/health/ready")
 def health_ready() -> dict:
     return {"status": "ready"}
+
+
+@app.get("/api/debug/artifacts")
+def debug_artifacts():
+    try:
+        files = []
+        if ARTIFACTS_DIR.exists():
+            for p in ARTIFACTS_DIR.glob("**/*"):
+                if p.is_file():
+                    files.append({
+                        "name": p.name,
+                        "rel_path": str(p.relative_to(ARTIFACTS_DIR)),
+                        "size": p.stat().st_size,
+                        "absolute": str(p.resolve())
+                    })
+        return {
+            "artifacts_dir": str(ARTIFACTS_DIR.resolve()),
+            "exists": ARTIFACTS_DIR.exists(),
+            "files": files
+        }
+    except Exception as e:
+        return {"error": str(e)}
+
 
 
 @app.get("/api/config", response_model=AutomationConfig)
