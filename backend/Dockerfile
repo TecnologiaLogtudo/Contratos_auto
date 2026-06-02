@@ -34,7 +34,8 @@ RUN useradd -m -u 1001 appuser && \
     mkdir -p /app/backend/app/data && \
     chown -R appuser:appuser /app
 
-USER appuser
+# USER appuser
+
 
 EXPOSE 8000
 

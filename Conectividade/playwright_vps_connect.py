@@ -22,8 +22,11 @@ class PlaywrightVPSConfig:
             "--disable-blink-features=AutomationControlled",
             "--no-first-run",
             "--no-default-browser-check",
+            "--no-sandbox",
+            "--disable-setuid-sandbox",
         ]
     )
+
     extra_http_headers: Dict[str, str] = field(
         default_factory=lambda: {
             "Accept-Language": "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7",

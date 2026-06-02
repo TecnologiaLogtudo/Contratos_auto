@@ -54,6 +54,12 @@ def perform_login(
         if existing_page:
             page = existing_page
             log_callback("[F2] Reutilizando página existente para login.", "DEBUG")
+        elif browser_context.pages:
+            page = browser_context.pages[0]
+            log_callback("[F2] Reutilizando página existente criada no setup do navegador.", "DEBUG")
+            if browser_log_callback:
+                page.on("pageerror", lambda err: browser_log_callback(str(err), "ERROR"))
+                page.on("console", lambda msg: browser_log_callback(msg.text, msg.type.upper()))
         else:
             page = browser_context.new_page() # Cria uma nova página se não houver uma existente
             log_callback("[F2] Nova página aberta para login inicial.", "DEBUG")
@@ -62,11 +68,10 @@ def perform_login(
                 page.on("console", lambda msg: browser_log_callback(msg.text, msg.type.upper()))
         
         log_callback("[F2] Navegando para a página de login...", "INFO")
-        # CORREÇÃO: Adicionado 'https://'
         page.goto("https://logtudo.e-login.net/", wait_until="networkidle")
 
-        # ETAPA 1: Preencher credenciais
         log_callback("[F2] Preenchendo usuário...", "DEBUG")
+
         # Usamos seletores CSS [name="..."]
         page.fill('[name="usuario"]', login)
         

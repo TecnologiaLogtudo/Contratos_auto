@@ -8,6 +8,7 @@ import shutil
 import threading
 import time
 import traceback
+import sqlite3
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -35,10 +36,51 @@ ARTIFACTS_DIR = DATA_DIR / "artifacts"
 LOGS_HISTORY_PATH = DATA_DIR / "logs_history.json"
 CONFIG_PATH = BASE_DIR / "config.ini"
 RESULTS_HISTORY_PATH = DATA_DIR / "results_history.json"
+DB_PATH = DATA_DIR / "automation.db"
 URL_DESTINO = "https://logtudo.e-login.net/versoes/versao5.0/rotinas/formulario.php?rotina=trans_conhecimento&OP=O1&_qsf=1"
 
 PHASE_RE = re.compile(r"\[(F\d)\]")
 COTACAO_RE = re.compile(r"Cotação:\s*([^\]\s]+)")
+
+
+def init_db() -> None:
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS results_history (
+                id TEXT PRIMARY KEY,
+                job_id TEXT,
+                log_session_id TEXT,
+                arquivo_original TEXT,
+                result_file TEXT,
+                status TEXT,
+                total INTEGER,
+                processados INTEGER,
+                sucessos INTEGER,
+                erros INTEGER,
+                created_at TEXT
+            )
+        """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS logs_history (
+                id TEXT PRIMARY KEY,
+                job_id TEXT,
+                created_at TEXT,
+                status TEXT,
+                user TEXT,
+                ip TEXT,
+                acoes_criticas TEXT,
+                passos_acoes TEXT,
+                artefatos TEXT,
+                browser_logs TEXT
+            )
+        """)
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"[DB] Erro ao inicializar banco de dados SQLite: {e}")
+
 
 
 @dataclass
@@ -130,11 +172,15 @@ class AutomationManager:
         self._jobs: dict[str, JobRuntime] = {}
         self._jobs_lock = threading.Lock()
         self._history_lock = threading.RLock()
+        
+        # Inicializa banco SQLite
+        init_db()
 
         if not RESULTS_HISTORY_PATH.exists():
             RESULTS_HISTORY_PATH.write_text("[]", encoding="utf-8")
         if not LOGS_HISTORY_PATH.exists():
             LOGS_HISTORY_PATH.write_text("[]", encoding="utf-8")
+
 
     def load_config(self) -> AutomationConfig:
         parser = configparser.ConfigParser()
@@ -278,6 +324,22 @@ class AutomationManager:
 
 
     def list_results_history(self) -> list[dict]:
+        # Tenta ler do SQLite primeiro
+        try:
+            conn = sqlite3.connect(DB_PATH)
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM results_history ORDER BY created_at DESC")
+            rows = cursor.fetchall()
+            conn.close()
+            return [dict(r) for r in rows]
+        except Exception as e:
+            print(f"[DB] Erro ao ler histórico de resultados do SQLite: {e}")
+
+        # Fallback para JSON
+        return self._load_results_history_json()
+
+    def _load_results_history_json(self) -> list[dict]:
         with self._history_lock:
             try:
                 data = json.loads(RESULTS_HISTORY_PATH.read_text(encoding="utf-8"))
@@ -288,8 +350,26 @@ class AutomationManager:
     def delete_results(self, ids: list[str], password: str) -> dict:
         self._validate_admin_reset_password(password)
 
+        # Exclui do SQLite primeiro
+        try:
+            conn = sqlite3.connect(DB_PATH)
+            cursor = conn.cursor()
+            placeholders = ",".join(["?"] * len(ids))
+            cursor.execute(f"SELECT result_file FROM results_history WHERE id IN ({placeholders})", ids)
+            rows = cursor.fetchall()
+            for r in rows:
+                if r[0]:
+                    Path(r[0]).unlink(missing_ok=True)
+            
+            cursor.execute(f"DELETE FROM results_history WHERE id IN ({placeholders})", ids)
+            conn.commit()
+            conn.close()
+        except Exception as e:
+            print(f"[DB] Erro ao excluir resultados do SQLite: {e}")
+
+        # Fallback para JSON
         with self._history_lock:
-            history = self.list_results_history()
+            history = self._load_results_history_json()
             keep = []
             removed = 0
             for item in history:
@@ -300,9 +380,12 @@ class AutomationManager:
                     removed += 1
                 else:
                     keep.append(item)
-            RESULTS_HISTORY_PATH.write_text(json.dumps(keep, ensure_ascii=False, indent=2), encoding="utf-8")
+            try:
+                RESULTS_HISTORY_PATH.write_text(json.dumps(keep, ensure_ascii=False, indent=2), encoding="utf-8")
+            except Exception as e:
+                print(f"[JSON] Erro ao salvar fallback JSON de exclusão: {e}")
 
-        return {"removed": removed}
+        return {"removed": len(ids)}
 
     def _append_result_history(self, job: JobRuntime) -> None:
         item = {
@@ -318,10 +401,32 @@ class AutomationManager:
             "erros": len([e for e in job.logs if e.level == "ERRO"]),
             "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         }
+
+        # Salva no SQLite
+        try:
+            conn = sqlite3.connect(DB_PATH)
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT OR REPLACE INTO results_history (
+                    id, job_id, log_session_id, arquivo_original, result_file, status, total, processados, sucessos, erros, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                item["id"], item["job_id"], item["log_session_id"], item["arquivo_original"], item["result_file"],
+                item["status"], item["total"], item["processados"], item["sucessos"], item["erros"], item["created_at"]
+            ))
+            conn.commit()
+            conn.close()
+        except Exception as e:
+            job.emit(f"[DB] Erro ao salvar histórico de resultados no SQLite: {e}", "ERRO")
+
+        # Fallback JSON
         with self._history_lock:
-            history = self.list_results_history()
-            history.append(item)
-            RESULTS_HISTORY_PATH.write_text(json.dumps(history, ensure_ascii=False, indent=2), encoding="utf-8")
+            try:
+                history = self._load_results_history_json()
+                history.append(item)
+                RESULTS_HISTORY_PATH.write_text(json.dumps(history, ensure_ascii=False, indent=2), encoding="utf-8")
+            except Exception as e:
+                job.emit(f"[JSON] Erro ao salvar histórico de resultados no fallback: {e}", "ERRO")
 
     def _append_logs_history(self, job: JobRuntime) -> None:
         item = {
@@ -336,16 +441,68 @@ class AutomationManager:
             "artefatos": job.artifacts,
             "browser_logs": job.browser_logs,
         }
+
+        # Salva no SQLite
+        try:
+            conn = sqlite3.connect(DB_PATH)
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT OR REPLACE INTO logs_history (
+                    id, job_id, created_at, status, user, ip, acoes_criticas, passos_acoes, artefatos, browser_logs
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                item["id"], item["job_id"], item["created_at"], item["status"], item["user"], item["ip"],
+                json.dumps(item["acoes_criticas"], ensure_ascii=False),
+                json.dumps(item["passos_acoes"], ensure_ascii=False),
+                json.dumps(item["artefatos"], ensure_ascii=False),
+                json.dumps(item["browser_logs"], ensure_ascii=False)
+            ))
+            conn.commit()
+            conn.close()
+        except Exception as e:
+            job.emit(f"[DB] Erro ao salvar log de sessão no SQLite: {e}", "ERRO")
+
+        # Fallback JSON
         with self._history_lock:
             try:
-                sessions = json.loads(LOGS_HISTORY_PATH.read_text(encoding="utf-8"))
-            except Exception:
-                sessions = []
-            sessions = [s for s in sessions if s.get("id") != item["id"]]
-            sessions.append(item)
-            LOGS_HISTORY_PATH.write_text(json.dumps(sessions, ensure_ascii=False, indent=2), encoding="utf-8")
+                sessions = self._load_logs_history_json()
+                sessions = [s for s in sessions if s.get("id") != item["id"]]
+                sessions.append(item)
+                LOGS_HISTORY_PATH.write_text(json.dumps(sessions, ensure_ascii=False, indent=2), encoding="utf-8")
+            except Exception as e:
+                job.emit(f"[JSON] Erro ao salvar log de sessão no fallback: {e}", "ERRO")
 
     def list_log_sessions(self) -> list[dict]:
+        # Tenta ler do SQLite primeiro
+        try:
+            conn = sqlite3.connect(DB_PATH)
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM logs_history ORDER BY created_at DESC")
+            rows = cursor.fetchall()
+            conn.close()
+            sessions = []
+            for r in rows:
+                sessions.append({
+                    "id": r["id"],
+                    "job_id": r["job_id"],
+                    "created_at": r["created_at"],
+                    "status": r["status"],
+                    "user": r["user"],
+                    "ip": r["ip"],
+                    "acoes_criticas": json.loads(r["acoes_criticas"] or "[]"),
+                    "passos_acoes": json.loads(r["passos_acoes"] or "[]"),
+                    "artefatos": json.loads(r["artefatos"] or "[]"),
+                    "browser_logs": json.loads(r["browser_logs"] or "[]")
+                })
+            return sessions
+        except Exception as e:
+            print(f"[DB] Erro ao ler logs de sessões do SQLite: {e}")
+
+        # Fallback para JSON
+        return self._load_logs_history_json()
+
+    def _load_logs_history_json(self) -> list[dict]:
         with self._history_lock:
             try:
                 data = json.loads(LOGS_HISTORY_PATH.read_text(encoding="utf-8"))
@@ -354,14 +511,56 @@ class AutomationManager:
                 return []
 
     def get_log_session(self, session_id: str) -> Optional[dict]:
-        sessions = self.list_log_sessions()
+        # Tenta SQLite primeiro
+        try:
+            conn = sqlite3.connect(DB_PATH)
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM logs_history WHERE id = ?", (session_id,))
+            r = cursor.fetchone()
+            conn.close()
+            if r:
+                return {
+                    "id": r["id"],
+                    "job_id": r["job_id"],
+                    "created_at": r["created_at"],
+                    "status": r["status"],
+                    "user": r["user"],
+                    "ip": r["ip"],
+                    "acoes_criticas": json.loads(r["acoes_criticas"] or "[]"),
+                    "passos_acoes": json.loads(r["passos_acoes"] or "[]"),
+                    "artefatos": json.loads(r["artefatos"] or "[]"),
+                    "browser_logs": json.loads(r["browser_logs"] or "[]")
+                }
+        except Exception as e:
+            print(f"[DB] Erro ao ler log de sessão individual do SQLite: {e}")
+
+        # Fallback para JSON
+        sessions = self._load_logs_history_json()
         return next((s for s in sessions if s.get("id") == session_id), None)
 
     def clear_logs(self, password: str) -> dict:
         self._validate_admin_reset_password(password)
+
+        # Limpa do SQLite
+        try:
+            conn = sqlite3.connect(DB_PATH)
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM logs_history")
+            conn.commit()
+            conn.close()
+        except Exception as e:
+            print(f"[DB] Erro ao limpar logs do SQLite: {e}")
+
+        # Fallback JSON
         with self._history_lock:
-            LOGS_HISTORY_PATH.write_text("[]", encoding="utf-8")
+            try:
+                LOGS_HISTORY_PATH.write_text("[]", encoding="utf-8")
+            except Exception as e:
+                print(f"[JSON] Erro ao limpar logs no fallback JSON: {e}")
+
         return {"cleared": True}
+
 
     def _validate_admin_reset_password(self, password: str) -> None:
         admin_password = os.getenv("ADMIN_RESET_PASSWORD", "").strip()
