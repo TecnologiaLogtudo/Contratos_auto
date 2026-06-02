@@ -203,7 +203,7 @@ def preencher_contrato_frete(
         # ETAPA 7: Selecionar Operadora de Crédito
         pause_event.wait()
         log_callback(f"[F5] [Item {nro_cotacao}] Etapa 7: Selecionando Operadora 'REPOM PÓS PAGO'...", "DEBUG")
-        page.select_option('select[name="dados_operadoraCredito_id"]', value="7")
+        page.select_option('select[name="dados_operadoraCredito_id"]', value="10")
 
         time.sleep(atraso_etapas)
 
