@@ -492,16 +492,45 @@ export default function App() {
               <span>IP: <strong>{logSessionDetail?.ip || '-'}</strong></span>
             </div>
 
-            <div className="logs-box" ref={logsRef}>
-              {rows.map((row, idx) => (
-                <div className={`log-row lv-${row.level || 'INFO'}`} key={row.seq || row.path || idx}>
-                  {logsTab === 'artefatos'
-                    ? `${row.name} | ${row.path}`
-                    : `[${row.timestamp}] ${row.level ? `[${row.level}] ` : ''}${row.message || row.path || ''}`}
+            <div className={logsTab === 'artefatos' ? "" : "logs-box"} ref={logsRef}>
+              {logsTab === 'artefatos' ? (
+                <div className="artifacts-grid">
+                  {rows.map((row, idx) => {
+                    const artifactUrl = `${API_BASE}/artifacts/${row.name}`
+                    return (
+                      <div className="artifact-card" key={row.name || idx}>
+                        <div className="artifact-badge">{row.type === 'video' ? '🎬 Vídeo da Execução' : '📸 Captura de Tela (Print)'}</div>
+                        <div className="artifact-content">
+                          {row.type === 'video' ? (
+                            <video className="artifact-video" src={artifactUrl} controls preload="metadata" />
+                          ) : (
+                            <div className="artifact-img-wrap" onClick={() => window.open(artifactUrl, '_blank')}>
+                              <img className="artifact-img" src={artifactUrl} alt={row.name} />
+                              <div className="artifact-img-overlay"><span>Visualizar tela cheia</span></div>
+                            </div>
+                          )}
+                        </div>
+                        <div className="artifact-footer">
+                          <span className="artifact-name" title={row.name}>{row.name}</span>
+                          <a className="secondary mini-btn" href={artifactUrl} target="_blank" rel="noopener noreferrer" download>
+                            Baixar
+                          </a>
+                        </div>
+                      </div>
+                    )
+                  })}
+                  {!rows.length && <div className="muted" style={{ padding: '20px 0' }}>Sem artefatos (vídeo ou printscreen) para esta sessão.</div>}
                 </div>
-              ))}
-              {!rows.length && <div className="muted">Sem dados para esta aba no ID selecionado.</div>}
+              ) : (
+                rows.map((row, idx) => (
+                  <div className={`log-row lv-${row.level || 'INFO'}`} key={row.seq || row.path || idx}>
+                    {`[${row.timestamp}] ${row.level ? `[${row.level}] ` : ''}${row.message || row.path || ''}`}
+                  </div>
+                ))
+              )}
+              {logsTab !== 'artefatos' && !rows.length && <div className="muted">Sem dados para esta aba no ID selecionado.</div>}
             </div>
+
           </div>
         </div>
       </section>

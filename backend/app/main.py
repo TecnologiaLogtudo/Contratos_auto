@@ -61,6 +61,13 @@ if assets_dir:
     if BASE_PATH:
         app.mount(f"{BASE_PATH}/assets", StaticFiles(directory=str(assets_dir)), name="web-assets-basepath")
 
+from .services.automation_manager import ARTIFACTS_DIR
+ARTIFACTS_DIR.mkdir(parents=True, exist_ok=True)
+app.mount("/artifacts", StaticFiles(directory=str(ARTIFACTS_DIR)), name="artifacts-static")
+if BASE_PATH:
+    app.mount(f"{BASE_PATH}/artifacts", StaticFiles(directory=str(ARTIFACTS_DIR)), name="artifacts-static-basepath")
+
+
 
 def _render_index_html() -> HTMLResponse:
     if not index_path.exists():

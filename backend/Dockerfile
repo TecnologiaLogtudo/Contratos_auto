@@ -22,7 +22,9 @@ COPY --from=builder /wheels /wheels
 COPY --from=builder /build/requirements.txt /tmp/requirements.txt
 RUN pip install --no-cache-dir --no-index --find-links=/wheels -r /tmp/requirements.txt && \
     playwright install --with-deps chromium && \
-    rm -rf /wheels /tmp/requirements.txt
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/* /wheels /tmp/requirements.txt /root/.cache
+
 
 COPY backend /app/backend
 COPY Conectividade /app/Conectividade

@@ -97,6 +97,29 @@ class JobRuntime:
         with self.condition:
             self.condition.notify_all()
 
+    def take_screenshot(self, name: str) -> None:
+        try:
+            if not self.page:
+                return
+            clean_name = "".join(c for c in name if c.isalnum() or c in (" ", "_", "-")).rstrip()
+            clean_name = clean_name.replace(" ", "_")
+            filename = f"{self.log_session_id}_{clean_name}_{int(time.time())}.png"
+            filepath = ARTIFACTS_DIR / filename
+            
+            # Take screenshot using Playwright
+            self.page.screenshot(path=str(filepath))
+            
+            with self.lock:
+                self.artifacts.append({
+                    "type": "printscreen",
+                    "name": filename,
+                    "path": str(filepath.resolve())
+                })
+            self.emit(f"Printscreen salvo: {filename}", "DEBUG")
+        except Exception as e:
+            self.emit(f"Falha ao tirar printscreen ({name}): {e}", "DEBUG")
+
+
 
 class AutomationManager:
     def __init__(self) -> None:
@@ -242,7 +265,16 @@ class AutomationManager:
                 job.status.state = "stopped"
                 job.status.message = "Parado pelo usuário"
         job.emit("Parada solicitada pelo usuário.", "AVISO")
+        
+        # Save logs and result history immediately when stopping to guarantee persistence
+        try:
+            self._append_result_history(job)
+            self._append_logs_history(job)
+        except Exception as e:
+            job.emit(f"Erro ao persistir logs imediatos da parada: {e}", "ERRO")
+            
         return job.status
+
 
     def list_results_history(self) -> list[dict]:
         with self._history_lock:
@@ -391,6 +423,9 @@ class AutomationManager:
             )
             if not job.page:
                 raise RuntimeError("Falha no login.")
+            
+            job.take_screenshot("login_sucesso")
+
 
             dados_planilha = self._ler_dados_planilha(job)
             dados_para_processar = [item for item in dados_planilha if item.get("Status") == "Pendente"]
@@ -420,6 +455,7 @@ class AutomationManager:
 
                 ok3 = fase3_preenchimento.preencher_formulario(job.page, item, job.emit, job.pause_event, job.planilha_processada_path, cfg.atraso_etapas, cfg.atraso_fases)
                 if not ok3:
+                    job.take_screenshot(f"falha_formulario_cotacao_{nro}")
                     self._sleep_or_stop(job, cfg.atraso_fases)
                     self._reset_session(job, nro, cfg.atraso_fases)
                     continue
@@ -427,6 +463,7 @@ class AutomationManager:
                 self._sleep_or_stop(job, cfg.atraso_fases)
                 ok4 = fase4_frete.preencher_frete(job.page, item, job.emit, job.pause_event, job.planilha_processada_path, cfg.atraso_etapas)
                 if not ok4:
+                    job.take_screenshot(f"falha_frete_cotacao_{nro}")
                     self._sleep_or_stop(job, cfg.atraso_fases)
                     self._reset_session(job, nro, cfg.atraso_fases)
                     continue
@@ -434,10 +471,12 @@ class AutomationManager:
                 self._sleep_or_stop(job, cfg.atraso_fases)
                 ok5 = fase5_contrato_frete.preencher_contrato_frete(job.page, item, job.emit, job.pause_event, cfg.atraso_etapas, job.planilha_processada_path, cfg.atraso_fases, cfg.dados_km)
                 if not ok5:
+                    job.take_screenshot(f"falha_contrato_cotacao_{nro}")
                     self._sleep_or_stop(job, cfg.atraso_fases)
                     self._reset_session(job, nro, cfg.atraso_fases)
                     continue
 
+                job.take_screenshot(f"sucesso_contrato_cotacao_{nro}")
                 self._sleep_or_stop(job, cfg.atraso_fases)
                 job.page.goto(URL_DESTINO, wait_until="networkidle", timeout=60000)
                 self._update_progress(job, idx, total, f"Cotação {nro} concluída")
@@ -460,18 +499,30 @@ class AutomationManager:
                 job.emit("Automação concluída.", "SUCESSO")
 
         except Exception as e:
+            try:
+                job.take_screenshot("erro_critico_execucao")
+            except Exception:
+                pass
             job.emit(f"Erro crítico: {e}", "ERRO")
             job.emit(traceback.format_exc(), "DEBUG")
             with job.lock:
                 job.status.state = "error"
                 job.status.message = str(e)
         finally:
-            self._collect_video_artifact(job)
+            video_path = None
+            try:
+                if job.page and job.page.video:
+                    video_path = job.page.video.path()
+            except Exception:
+                pass
+
             self._close_resources(job)
+            self._collect_video_artifact(job, video_path)
             self._append_result_history(job)
             self._append_logs_history(job)
             with job.condition:
                 job.condition.notify_all()
+
 
     def _sleep_or_stop(self, job: JobRuntime, seconds: float) -> None:
         end = time.time() + max(seconds, 0)
@@ -542,16 +593,25 @@ class AutomationManager:
         except Exception:
             pass
 
-    def _collect_video_artifact(self, job: JobRuntime) -> None:
+    def _collect_video_artifact(self, job: JobRuntime, video_path: Optional[str] = None) -> None:
         try:
-            if not job.page or not job.page.video:
+            source_path = video_path
+            if not source_path and job.page and job.page.video:
+                try:
+                    source_path = job.page.video.path()
+                except Exception:
+                    pass
+            if not source_path:
                 return
-            source = Path(job.page.video.path())
+            source = Path(source_path)
             if not source.exists():
                 return
             target = ARTIFACTS_DIR / f"{job.log_session_id}_{source.name}"
             shutil.copyfile(source, target)
-            job.artifacts.append({"type": "video", "name": target.name, "path": str(target.resolve())})
+            with job.lock:
+                # Evita duplicidade se já houver
+                if not any(a.get("name") == target.name for a in job.artifacts):
+                    job.artifacts.append({"type": "video", "name": target.name, "path": str(target.resolve())})
         except Exception:
             pass
         try:
@@ -559,6 +619,7 @@ class AutomationManager:
                 job.playwright_instance.stop()
         except Exception:
             pass
+
 
 
 manager = AutomationManager()
