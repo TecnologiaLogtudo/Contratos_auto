@@ -129,7 +129,8 @@ class AutomationManager:
         DATA_DIR.mkdir(parents=True, exist_ok=True)
         self._jobs: dict[str, JobRuntime] = {}
         self._jobs_lock = threading.Lock()
-        self._history_lock = threading.Lock()
+        self._history_lock = threading.RLock()
+
         if not RESULTS_HISTORY_PATH.exists():
             RESULTS_HISTORY_PATH.write_text("[]", encoding="utf-8")
         if not LOGS_HISTORY_PATH.exists():
