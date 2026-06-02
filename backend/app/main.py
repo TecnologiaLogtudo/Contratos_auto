@@ -286,6 +286,7 @@ def serve_manual():
 
 @app.get("/{full_path:path}")
 def spa_fallback(full_path: str):
-    if full_path.startswith(("api/", "health", "assets/")):
+    if full_path.startswith(("api/", "health", "assets/", "artifacts/")):
         raise HTTPException(status_code=404, detail="Not found")
     return _render_index_html()
+
