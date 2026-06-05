@@ -11,7 +11,7 @@ ARTIFACTS_TEMP_DIR = Path(__file__).resolve().parents[1] / "data" / "artifacts" 
 
 def launch_browser(log_callback: Callable) -> Optional[Tuple[any, Browser, BrowserContext]]:
     """
-    Inicia o Playwright e o navegador Chromium.
+    Inicia o Playwright e o navegador configurado.
     """
     try:
         log_callback("[F2] Iniciando Playwright (config VPS)...", "DEBUG")
@@ -38,8 +38,8 @@ def launch_browser(log_callback: Callable) -> Optional[Tuple[any, Browser, Brows
     except Exception as e:
         log_callback("[F2] Erro ao iniciar o Playwright.", "ERRO")
         if "Executable doesn't exist" in str(e):
-            log_callback("[F2] Possível causa: 'playwright' não instalado corretamente.", "ERRO")
-            log_callback("[F2] Execute 'pip install playwright' e 'playwright install' no seu terminal.", "ERRO")
+            log_callback("[F2] Possível causa: binários do Playwright ausentes na imagem/container.", "ERRO")
+            log_callback("[F2] Rebuild a imagem do backend para instalar Chrome e FFmpeg: docker compose build backend.", "ERRO")
         log_callback(f"Detalhe: {e!r}", "DEBUG")
         log_callback(f"Traceback: {traceback.format_exc()}", "DEBUG")
         return None, None, None
