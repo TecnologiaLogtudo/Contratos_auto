@@ -1,9 +1,10 @@
 # =============================
-# Docker build context (conservador)
+# Docker build context
 # =============================
 
 # Git / editor metadata
 .git/
+.gitignore
 .vscode/
 .idea/
 
@@ -17,14 +18,25 @@ venv/
 dist/
 build/
 
-# Frontend pesado (mantendo web source no contexto)
+# Frontend
+**/node_modules/
 web/node_modules/
 web/dist/
+frontend/node_modules/
+
+# Artefatos e dados
+backend/app/data/
+*.db
+.playwright-mcp/
 
 # Temporários/artefatos locais
 *.log
 *.tmp
+*.xlsx
+*.xls
 *_processado.xlsx
 *_tmp*.xlsx
 
-# (Importante) Não excluir backend/, Conectividade/, config.ini, docker-compose.yml
+# Configs que devem ser injetadas via ENV ou volumes
+config.ini
+.env

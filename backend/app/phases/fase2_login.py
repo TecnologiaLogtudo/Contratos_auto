@@ -2,6 +2,7 @@ from pathlib import Path
 from playwright.sync_api import Browser, BrowserContext, Page, Error
 from typing import Callable, Optional, Tuple
 import os
+import traceback
 
 from Conectividade.playwright_vps_connect import PlaywrightVPSClient, PlaywrightVPSConfig
 
@@ -16,7 +17,10 @@ def launch_browser(log_callback: Callable) -> Optional[Tuple[any, Browser, Brows
         log_callback("[F2] Iniciando Playwright (config VPS)...", "DEBUG")
         ARTIFACTS_TEMP_DIR.mkdir(parents=True, exist_ok=True)
 
-        headless = os.getenv("PLAYWRIGHT_HEADLESS", "true").lower() == "true"
+        headless_env = os.getenv("PLAYWRIGHT_HEADLESS", "false")
+        headless = headless_env.strip().lower() == "true"
+        modo_navegador = "headless" if headless else "visivel"
+        log_callback(f"[F2] Modo do navegador: {modo_navegador} (PLAYWRIGHT_HEADLESS={headless_env!r}).", "DEBUG")
         cfg = PlaywrightVPSConfig(
             headless=headless,
             record_video_dir=str(ARTIFACTS_TEMP_DIR),
@@ -35,7 +39,8 @@ def launch_browser(log_callback: Callable) -> Optional[Tuple[any, Browser, Brows
         if "Executable doesn't exist" in str(e):
             log_callback("[F2] Possível causa: 'playwright' não instalado corretamente.", "ERRO")
             log_callback("[F2] Execute 'pip install playwright' e 'playwright install' no seu terminal.", "ERRO")
-        log_callback(f"Detalhe: {e}", "DEBUG")
+        log_callback(f"Detalhe: {e!r}", "DEBUG")
+        log_callback(f"Traceback: {traceback.format_exc()}", "DEBUG")
         return None, None, None
 
 def perform_login(

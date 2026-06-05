@@ -27,7 +27,8 @@ export default function App() {
   const envApiBase = (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_API_BASE_URL ? String(import.meta.env.VITE_API_BASE_URL) : '')
     .trim()
     .replace(/\/+$/, '')
-  const API_BASE = envApiBase || basePath
+  const devApiBase = import.meta.env.DEV ? `http://127.0.0.1:8000${basePath}` : ''
+  const API_BASE = envApiBase || devApiBase || basePath
   const manualRoute = `${basePath}/manual`
   const isManualPage = typeof window !== 'undefined' && (
     window.location.pathname.replace(/\/+$/, '') === manualRoute ||
@@ -58,6 +59,7 @@ export default function App() {
   const fileInputRef = useRef(null)
   const configCardRef = useRef(null)
   const loginInputRef = useRef(null)
+  const manualLogSessionSelectedRef = useRef(false)
 
   useEffect(() => {
     fetch(`${API_BASE}/api/config`).then((r) => r.json()).then(setConfig).catch(() => {})
@@ -72,7 +74,9 @@ export default function App() {
       if (!r.ok) return
       const data = await r.json()
       setJob(data.status)
-      if (data?.status?.log_session_id) setSelectedLogSessionId(data.status.log_session_id)
+      if (data?.status?.log_session_id && !manualLogSessionSelectedRef.current) {
+        setSelectedLogSessionId((prev) => prev || data.status.log_session_id)
+      }
       if (['completed', 'error', 'stopped'].includes(data.status.state)) {
         loadHistory()
         loadLogSessions()
@@ -105,8 +109,8 @@ export default function App() {
   const metrics = useMemo(() => {
     const sucessos = history.reduce((acc, h) => acc + (h.sucessos || 0), 0)
     const erros = history.reduce((acc, h) => acc + (h.erros || 0), 0)
-    const pendentes = history.reduce((acc, h) => acc + Math.max((h.total || 0) - (h.processados || 0), 0), 0)
-    const total = sucessos + erros
+    const pendentes = history.reduce((acc, h) => acc + (h.pendentes || 0), 0)
+    const total = sucessos + erros + pendentes
     const taxa = total ? Math.round((sucessos / total) * 100) : 0
     return { sucessos, erros, pendentes, taxa }
   }, [history])
@@ -127,7 +131,7 @@ export default function App() {
     if (!r.ok) return
     const data = await r.json()
     setLogSessions(data)
-    if (!selectedLogSessionId && data.length) setSelectedLogSessionId(data[0].id)
+    setSelectedLogSessionId((prev) => prev || (data.length ? data[0].id : ''))
   }
 
   async function loadLogSessionDetail(sessionId) {
@@ -153,6 +157,7 @@ export default function App() {
       return
     }
     setClearLogsPassword('')
+    manualLogSessionSelectedRef.current = false
     setSelectedLogSessionId('')
     setLogSessionDetail(null)
     setLogSessions([])
@@ -253,6 +258,8 @@ export default function App() {
     }
     setJobId(data.job_id)
     setJob(data.status)
+    manualLogSessionSelectedRef.current = false
+    if (data.status?.log_session_id) setSelectedLogSessionId(data.status.log_session_id)
     notify('success', 'Automação iniciada com sucesso.')
     setLoading(false)
     setBusyAction('')
@@ -412,7 +419,7 @@ export default function App() {
             <table>
               <thead>
                 <tr>
-                  <th></th><th>Arquivo</th><th>Job</th><th>Status</th><th>Sucessos</th><th>Erros</th><th>Criado em</th><th>Ação</th>
+                  <th></th><th>Arquivo</th><th>Job</th><th>Status</th><th>Sucessos</th><th>Erros</th><th>Pendentes</th><th>Criado em</th><th>Ação</th>
                 </tr>
               </thead>
               <tbody>
@@ -424,6 +431,7 @@ export default function App() {
                     <td>{row.status}</td>
                     <td>{row.sucessos ?? 0}</td>
                     <td>{row.erros ?? 0}</td>
+                    <td>{row.pendentes ?? 0}</td>
                     <td>{row.created_at}</td>
                     <td>{row.result_file ? <a className="secondary download-link" href={`${API_BASE}/api/results/history/${row.id}/download`}>Download</a> : '-'}</td>
                   </tr>
@@ -469,6 +477,7 @@ export default function App() {
                 className={`session-id-btn ${selectedLogSessionId === item.id ? 'active' : ''}`}
                 onClick={async () => {
                   await navigator.clipboard.writeText(item.id)
+                  manualLogSessionSelectedRef.current = true
                   setSelectedLogSessionId(item.id)
                   notify('info', `ID ${item.id} copiado.`)
                 }}
@@ -499,10 +508,26 @@ export default function App() {
                     const artifactUrl = `${API_BASE}/artifacts/${row.name}`
                     return (
                       <div className="artifact-card" key={row.name || idx}>
-                        <div className="artifact-badge">{row.type === 'video' ? '🎬 Vídeo da Execução' : '📸 Captura de Tela (Print)'}</div>
+                        <div className="artifact-badge">
+                          {row.type === 'video' ? '🎬 Vídeo da Execução' : row.type === 'trace' ? '🛠️ Trace Playwright' : '📸 Captura de Tela (Print)'}
+                        </div>
                         <div className="artifact-content">
                           {row.type === 'video' ? (
                             <video className="artifact-video" src={artifactUrl} controls preload="metadata" />
+                          ) : row.type === 'trace' ? (
+                            <div className="artifact-trace-wrap" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', width: '100%', height: '100%', padding: '16px', gap: '8px', textAlign: 'center', background: '#09162d' }}>
+                              <span style={{ fontSize: '32px' }}>🔍</span>
+                              <span style={{ fontSize: '11px', color: '#93aed8', fontWeight: '500' }}>Trace do Playwright (.zip)</span>
+                              <a 
+                                className="primary mini-btn" 
+                                href={`https://trace.playwright.dev/?trace=${encodeURIComponent(new URL(artifactUrl, window.location.origin).href)}`} 
+                                target="_blank" 
+                                rel="noopener noreferrer"
+                                style={{ display: 'inline-block', textDecoration: 'none', color: '#e7f0ff', background: '#2f7fd8', padding: '5px 10px', borderRadius: '4px', fontSize: '10px', fontWeight: '600' }}
+                              >
+                                Abrir no Trace Viewer
+                              </a>
+                            </div>
                           ) : (
                             <div className="artifact-img-wrap" onClick={() => window.open(artifactUrl, '_blank')}>
                               <img className="artifact-img" src={artifactUrl} alt={row.name} />

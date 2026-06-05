@@ -1,0 +1,64 @@
+----------------------------------------------------
+| MANUAL RÁPIDO - AUTOMAÇÃO DE CONTRATOS LOGTUDO     |
+----------------------------------------------------
+
+Olá! Este guia vai te ajudar a usar o programa de automação de contratos de forma fácil e rápida.
+
+
+---
+1. CONFIGURAÇÃO INICIAL (SÓ PRECISA FAZER UMA VEZ)
+---
+
+Ao abrir o programa pela primeira vez, você precisa configurar seu login e senha do sistema LogTudo.
+
+1. Abra o programa "Automacao LogTudo.exe".
+
+2. Clique na aba "Configurações".
+
+3. Preencha os campos:
+   - Login: Seu nome de usuário do sistema LogTudo.
+   - Senha: Sua senha do sistema LogTudo.
+
+4. Atrasos (Opcional):
+   - "Atraso entre fases (s)": É o tempo de espera (em segundos) que o robô aguarda ao mudar de uma tela grande para outra. O padrão é 1 segundo.
+   - "Atraso entre etapas (s)": É o tempo de espera entre o preenchimento de campos pequenos na mesma tela. O padrão é 0.3 segundos.
+
+   >> RECOMENDAÇÃO: Mantenha os valores padrão. Só altere se notar que a automação está muito rápida para a sua conexão com a internet.
+
+As informações de login e senha ficarão salvas para a próxima vez que você usar.
+
+
+---
+2. COMO USAR A AUTOMAÇÃO
+---
+
+Com a configuração feita, siga estes passos para rodar a automação:
+
+1. Volte para a aba "Execução".
+
+2. Clique no botão azul "▶ Iniciar Automação".
+
+3. Uma janela se abrirá para você escolher a planilha de Excel (.xlsx ou .xls) que contém os dados dos contratos. Selecione o arquivo e clique em "Abrir".
+
+4. PRONTO! Agora é só aguardar. O robô fará todo o trabalho:
+   - Uma janela do navegador (Google Chrome) será aberta. NÃO FECHE ESSA JANELA!
+   - O robô fará o login no sistema.
+   - Ele irá processar item por item da planilha.
+   - Você pode acompanhar o que ele está fazendo pela caixa de texto na tela do programa.
+
+
+---
+3. INFORMAÇÕES IMPORTANTES
+---
+
+* PAUSAR E CONTINUAR: Se precisar, você pode clicar em "Pausar" para que o robô pare temporariamente. Para ele voltar ao trabalho, clique em "Continuar".
+
+* RESULTADO FINAL: Ao final do processo, na mesma pasta onde estava sua planilha original, será criado um novo arquivo com o final "_processado.xlsx".
+  - A aba "Dados Processados" mostra os contratos que foram feitos com sucesso (em verde).
+  - A aba "Contrato não realizado" mostra os itens que deram erro e o motivo.
+
+* EM CASO DE ERRO: Se algum item falhar, o robô registrará o erro na planilha de resultado e tentará continuar com o próximo item da lista.
+
+* NÃO FECHE O NAVEGADOR: Enquanto a automação estiver rodando, não feche a janela do navegador que o robô abriu. Fechá-la irá interromper o processo.
+
+* LOG DE ATIVIDADES: Para detalhes técnicos, um arquivo chamado "log_automacao.txt" é criado na pasta do programa, registrando tudo o que aconteceu.

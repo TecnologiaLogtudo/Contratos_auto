@@ -43,7 +43,63 @@ PHASE_RE = re.compile(r"\[(F\d)\]")
 COTACAO_RE = re.compile(r"Cotação:\s*([^\]\s]+)")
 
 
+def _resolve_artifact_disk_path(file_path: Optional[str], job_id: Optional[str] = None) -> Optional[Path]:
+    """
+    Resolve o caminho físico de um arquivo de artefato no disco rígido.
+    Suporta caminhos absolutos, caminhos relativos ao workspace e caminhos legado
+    do contêiner (como /app/backend/app/data/... ou /app/webapp/exports/...)
+    """
+    if not file_path:
+        return None
+    clean_path = str(file_path).replace("\\", "/")
+    path_direct = Path(file_path)
+    if path_direct.exists() and path_direct.is_file():
+        return path_direct.resolve()
+    filename = path_direct.name
+    candidates = [
+        DATA_DIR / filename,
+        ARTIFACTS_DIR / filename,
+        RESULTS_DIR / filename,
+        UPLOADS_DIR / filename,
+    ]
+    if job_id:
+        candidates.append(ARTIFACTS_DIR / job_id / filename)
+        candidates.append(DATA_DIR / "exports" / "jobs" / job_id / filename)
+    if "/backend/app/data/" in clean_path:
+        parts = clean_path.split("/backend/app/data/")
+        if len(parts) > 1:
+            candidates.append(DATA_DIR / parts[1])
+    if "exports/jobs" in clean_path:
+        parts = clean_path.split("exports/jobs/")
+        if len(parts) > 1:
+            sub_parts = parts[1].split("/")
+            if len(sub_parts) > 0:
+                candidates.append(ARTIFACTS_DIR / sub_parts[-1])
+                if job_id:
+                    candidates.append(ARTIFACTS_DIR / job_id / sub_parts[-1])
+    if "uploads/" in clean_path:
+        parts = clean_path.split("uploads/")
+        if len(parts) > 1:
+            candidates.append(UPLOADS_DIR / parts[-1])
+    candidates.append(Path("backend/app/data/artifacts") / filename)
+    candidates.append(Path("backend/app/data/results") / filename)
+    candidates.append(Path("backend/app/data/uploads") / filename)
+    if job_id:
+        candidates.append(Path("backend/app/data/artifacts") / job_id / filename)
+    for candidate in candidates:
+        try:
+            if candidate.exists() and candidate.is_file():
+                return candidate.resolve()
+        except Exception:
+            continue
+    return None
+
+
 def init_db() -> None:
+    """
+    Inicializa o banco de dados SQLite e cria as tabelas necessárias,
+    incluindo a tabela job_artifacts para gerenciar metadados de arquivos.
+    """
     try:
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
@@ -59,9 +115,17 @@ def init_db() -> None:
                 processados INTEGER,
                 sucessos INTEGER,
                 erros INTEGER,
+                pendentes INTEGER,
+                taxa_sucesso REAL,
                 created_at TEXT
             )
         """)
+        cursor.execute("PRAGMA table_info(results_history)")
+        existing_columns = {row[1] for row in cursor.fetchall()}
+        if "pendentes" not in existing_columns:
+            cursor.execute("ALTER TABLE results_history ADD COLUMN pendentes INTEGER DEFAULT 0")
+        if "taxa_sucesso" not in existing_columns:
+            cursor.execute("ALTER TABLE results_history ADD COLUMN taxa_sucesso REAL DEFAULT 0.0")
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS logs_history (
                 id TEXT PRIMARY KEY,
@@ -74,6 +138,15 @@ def init_db() -> None:
                 passos_acoes TEXT,
                 artefatos TEXT,
                 browser_logs TEXT
+            )
+        """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS job_artifacts (
+                id TEXT PRIMARY KEY,
+                job_id TEXT,
+                type TEXT,
+                file_path TEXT,
+                created_at TEXT
             )
         """)
         conn.commit()
@@ -140,6 +213,10 @@ class JobRuntime:
             self.condition.notify_all()
 
     def take_screenshot(self, name: str) -> None:
+        """
+        Captura uma captura de tela (screenshot) da página atual do Playwright
+        e a registra como artefato no banco de dados.
+        """
         try:
             if not self.page:
                 return
@@ -148,7 +225,7 @@ class JobRuntime:
             filename = f"{self.log_session_id}_{clean_name}_{int(time.time())}.png"
             filepath = ARTIFACTS_DIR / filename
             
-            # Take screenshot using Playwright
+            # Captura a screenshot usando Playwright
             self.page.screenshot(path=str(filepath))
             
             with self.lock:
@@ -157,6 +234,13 @@ class JobRuntime:
                     "name": filename,
                     "path": str(filepath.resolve())
                 })
+                
+            # Registra o artefato no banco de dados SQLite de forma assíncrona/segura
+            try:
+                manager._record_artifact(self.status.id, "printscreen", filepath)
+            except Exception as db_err:
+                self.emit(f"[DB] Falha ao registrar screenshot no banco de dados: {db_err}", "DEBUG")
+                
             self.emit(f"Printscreen salvo: {filename}", "DEBUG")
         except Exception as e:
             self.emit(f"Falha ao tirar printscreen ({name}): {e}", "DEBUG")
@@ -181,6 +265,28 @@ class AutomationManager:
         if not LOGS_HISTORY_PATH.exists():
             LOGS_HISTORY_PATH.write_text("[]", encoding="utf-8")
 
+    def _record_artifact(self, job_id: str, type_str: str, file_path: Path) -> None:
+        """
+        Registra o metadado de um artefato na tabela job_artifacts do banco de dados SQLite.
+        """
+        try:
+            conn = sqlite3.connect(DB_PATH)
+            cursor = conn.cursor()
+            artifact_id = str(uuid.uuid4())
+            cursor.execute("""
+                INSERT INTO job_artifacts (id, job_id, type, file_path, created_at)
+                VALUES (?, ?, ?, ?, ?)
+            """, (
+                artifact_id,
+                job_id,
+                type_str,
+                str(file_path.resolve()),
+                datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            ))
+            conn.commit()
+            conn.close()
+        except Exception as e:
+            print(f"[DB] Erro ao gravar metadado do artefato {type_str}: {e}")
 
     def load_config(self) -> AutomationConfig:
         parser = configparser.ConfigParser()
@@ -192,7 +298,7 @@ class AutomationManager:
             senha=parser.get("CREDENCIAS", "senha", fallback=""),
             atraso_fases=parser.getfloat("AUTOMACAO", "atrasofases", fallback=1.0),
             atraso_etapas=parser.getfloat("AUTOMACAO", "atrasoetapas", fallback=0.3),
-            dados_km=parser.get("AUTOMACAO", "dados_km", fallback="10"),
+            dados_km=parser.get("AUTOMACAO", "dados_km", fallback="20"),
             aceitar_frete_minimo_antt=parser.getboolean("AUTOMACAO", "aceitarfreteminimoantt", fallback=True),
         )
 
@@ -258,6 +364,10 @@ class AutomationManager:
         return {"filename": file_path.name, "rows": rows, "cols": cols, "headers": headers, "preview": preview}
 
     def create_job(self, source_file: Path, config: AutomationConfig, requester_ip: str = "") -> JobRuntime:
+        """
+        Cria um novo Job de automação, copia a planilha de entrada e registra a mesma
+        como o primeiro artefato (input_file).
+        """
         job_id = str(uuid.uuid4())
         log_session_id = datetime.now().strftime("%d%m%Y-%H%M")
         stored_file = UPLOADS_DIR / f"{job_id}_{source_file.name}"
@@ -276,6 +386,10 @@ class AutomationManager:
         runtime.thread = threading.Thread(target=self._run_job, args=(runtime,), daemon=True)
         with self._jobs_lock:
             self._jobs[job_id] = runtime
+            
+        # Registra a planilha de entrada (input_file) no banco de dados de artefatos
+        self._record_artifact(job_id, "input_file", stored_file)
+        
         runtime.thread.start()
         return runtime
 
@@ -312,14 +426,6 @@ class AutomationManager:
                 job.status.state = "stopped"
                 job.status.message = "Parado pelo usuário"
         job.emit("Parada solicitada pelo usuário.", "AVISO")
-        
-        # Save logs and result history immediately when stopping to guarantee persistence
-        try:
-            self._append_result_history(job)
-            self._append_logs_history(job)
-        except Exception as e:
-            job.emit(f"Erro ao persistir logs imediatos da parada: {e}", "ERRO")
-            
         return job.status
 
 
@@ -387,18 +493,109 @@ class AutomationManager:
 
         return {"removed": len(ids)}
 
+    def _record_artifact_once(self, job_id: str, type_str: str, file_path: Path) -> None:
+        conn = None
+        exists = None
+        try:
+            resolved_path = str(file_path.resolve())
+            conn = sqlite3.connect(DB_PATH)
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT id FROM job_artifacts WHERE job_id = ? AND type = ? AND file_path = ? LIMIT 1",
+                (job_id, type_str, resolved_path),
+            )
+            exists = cursor.fetchone()
+        except Exception as e:
+            print(f"[DB] Erro ao verificar artefato {type_str}: {e}")
+        finally:
+            if conn:
+                conn.close()
+        if not exists:
+            self._record_artifact(job_id, type_str, file_path)
+
+    def _finalize_result_file(self, job: JobRuntime) -> None:
+        if not job.planilha_processada_path:
+            return
+
+        source_res = Path(job.planilha_processada_path)
+        if not source_res.exists() or not source_res.is_file():
+            return
+
+        final_res = RESULTS_DIR / f"{job.status.id}_{source_res.name}"
+        try:
+            if source_res.resolve() != final_res.resolve():
+                shutil.copyfile(source_res, final_res)
+            else:
+                final_res = source_res
+        except Exception as e:
+            job.emit(f"Erro ao copiar planilha final para histórico: {e}", "ERRO")
+            return
+
+        with job.lock:
+            job.status.result_file = str(final_res.resolve())
+        self._record_artifact_once(job.status.id, "result_file", final_res)
+
+    @staticmethod
+    def _normalize_status(value: object) -> str:
+        return str(value or "").strip().lower().replace("í", "i")
+
+    def _count_result_statuses(self, result_file: Optional[str]) -> dict:
+        counts = {"sucessos": 0, "erros": 0, "pendentes": 0}
+        if not result_file:
+            return counts
+
+        path = Path(result_file)
+        if not path.exists() or not path.is_file():
+            return counts
+
+        try:
+            workbook = openpyxl.load_workbook(path, read_only=True, data_only=True)
+            try:
+                if "Dados Processados" in workbook.sheetnames:
+                    ws = workbook["Dados Processados"]
+                    headers = [cell.value for cell in ws[1]]
+                    status_col = headers.index("Status") + 1 if "Status" in headers else None
+                    if status_col:
+                        for row in ws.iter_rows(min_row=2, values_only=True):
+                            status = self._normalize_status(row[status_col - 1] if len(row) >= status_col else "")
+                            if status == "concluido":
+                                counts["sucessos"] += 1
+                            elif status == "pendente":
+                                counts["pendentes"] += 1
+
+                if "Contrato não realizado" in workbook.sheetnames:
+                    ws = workbook["Contrato não realizado"]
+                    headers = [cell.value for cell in ws[1]]
+                    status_col = headers.index("Status") + 1 if "Status" in headers else None
+                    if status_col:
+                        for row in ws.iter_rows(min_row=2, values_only=True):
+                            status = self._normalize_status(row[status_col - 1] if len(row) >= status_col else "")
+                            if status == "erro":
+                                counts["erros"] += 1
+            finally:
+                workbook.close()
+        except Exception as e:
+            print(f"[RESULTS] Erro ao contabilizar planilha final: {e}")
+
+        return counts
+
     def _append_result_history(self, job: JobRuntime) -> None:
+        counts = self._count_result_statuses(job.status.result_file)
+        total_contabilizado = counts["sucessos"] + counts["erros"] + counts["pendentes"]
+        taxa_sucesso = round((counts["sucessos"] / total_contabilizado) * 100, 2) if total_contabilizado else 0.0
         item = {
-            "id": str(uuid.uuid4()),
+            "id": job.status.id,
             "job_id": job.status.id,
             "log_session_id": job.log_session_id,
             "arquivo_original": job.stored_file.name,
             "result_file": job.status.result_file,
             "status": job.status.state,
-            "total": job.status.total_items,
-            "processados": job.status.current_item,
-            "sucessos": len([e for e in job.logs if e.level == "SUCESSO" and "Automação concluída" not in e.message]),
-            "erros": len([e for e in job.logs if e.level == "ERRO"]),
+            "total": total_contabilizado,
+            "processados": counts["sucessos"] + counts["erros"],
+            "sucessos": counts["sucessos"],
+            "erros": counts["erros"],
+            "pendentes": counts["pendentes"],
+            "taxa_sucesso": taxa_sucesso,
             "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         }
 
@@ -408,11 +605,12 @@ class AutomationManager:
             cursor = conn.cursor()
             cursor.execute("""
                 INSERT OR REPLACE INTO results_history (
-                    id, job_id, log_session_id, arquivo_original, result_file, status, total, processados, sucessos, erros, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    id, job_id, log_session_id, arquivo_original, result_file, status, total, processados, sucessos, erros, pendentes, taxa_sucesso, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 item["id"], item["job_id"], item["log_session_id"], item["arquivo_original"], item["result_file"],
-                item["status"], item["total"], item["processados"], item["sucessos"], item["erros"], item["created_at"]
+                item["status"], item["total"], item["processados"], item["sucessos"], item["erros"],
+                item["pendentes"], item["taxa_sucesso"], item["created_at"]
             ))
             conn.commit()
             conn.close()
@@ -423,6 +621,7 @@ class AutomationManager:
         with self._history_lock:
             try:
                 history = self._load_results_history_json()
+                history = [h for h in history if h.get("id") != item["id"] and h.get("job_id") != item["job_id"]]
                 history.append(item)
                 RESULTS_HISTORY_PATH.write_text(json.dumps(history, ensure_ascii=False, indent=2), encoding="utf-8")
             except Exception as e:
@@ -611,6 +810,13 @@ class AutomationManager:
             if not job.browser or not job.browser_context:
                 raise RuntimeError("Falha ao iniciar navegador.")
 
+            # Habilitar Playwright Tracing para depuração completa
+            try:
+                job.browser_context.tracing.start(screenshots=True, snapshots=True, sources=True)
+                job.emit("[F2] Playwright tracing iniciado com sucesso.", "DEBUG")
+            except Exception as trace_err:
+                job.emit(f"[F2] Aviso: Não foi possível iniciar o Playwright tracing: {trace_err}", "DEBUG")
+
             job.page = fase2_login.perform_login(
                 job.browser_context,
                 cfg.login,
@@ -686,12 +892,6 @@ class AutomationManager:
                     job.status.state = "completed"
                     job.status.message = "Finalizado"
                 job.status.percent = 100.0 if job.status.total_items else 0
-                if job.planilha_processada_path:
-                    source_res = Path(job.planilha_processada_path)
-                    final_res = RESULTS_DIR / f"{job.status.id}_{source_res.name}"
-                    if source_res.exists() and source_res.resolve() != final_res.resolve():
-                        shutil.copyfile(source_res, final_res)
-                    job.status.result_file = str(final_res.resolve())
 
             if job.status.state == "stopped":
                 job.emit("Execução interrompida.", "AVISO")
@@ -718,6 +918,7 @@ class AutomationManager:
 
             self._close_resources(job)
             self._collect_video_artifact(job, video_path)
+            self._finalize_result_file(job)
             self._append_result_history(job)
             self._append_logs_history(job)
             with job.condition:
@@ -782,6 +983,31 @@ class AutomationManager:
         return dados
 
     def _close_resources(self, job: JobRuntime) -> None:
+        """
+        Encerra os recursos do navegador Playwright de forma limpa,
+        garantindo o salvamento e registro do trace antes de fechar o contexto.
+        """
+        try:
+            if job.browser_context:
+                trace_filename = f"{job.log_session_id}_trace.zip"
+                trace_filepath = ARTIFACTS_DIR / trace_filename
+                try:
+                    job.browser_context.tracing.stop(path=str(trace_filepath))
+                    job.emit(f"Trace do Playwright salvo: {trace_filename}", "DEBUG")
+                    
+                    with job.lock:
+                        if not any(a.get("name") == trace_filename for a in job.artifacts):
+                            job.artifacts.append({
+                                "type": "trace",
+                                "name": trace_filename,
+                                "path": str(trace_filepath.resolve())
+                            })
+                    self._record_artifact(job.status.id, "trace", trace_filepath)
+                except Exception as trace_err:
+                    job.emit(f"Falha ao salvar trace do Playwright: {trace_err}", "DEBUG")
+        except Exception:
+            pass
+
         try:
             if job.browser_context:
                 job.browser_context.close()
@@ -794,6 +1020,10 @@ class AutomationManager:
             pass
 
     def _collect_video_artifact(self, job: JobRuntime, video_path: Optional[str] = None) -> None:
+        """
+        Copia o vídeo gravado pelo Playwright para o diretório de artefatos
+        e o registra no banco de dados.
+        """
         try:
             source_path = video_path
             if not source_path and job.page and job.page.video:
@@ -812,6 +1042,7 @@ class AutomationManager:
                 # Evita duplicidade se já houver
                 if not any(a.get("name") == target.name for a in job.artifacts):
                     job.artifacts.append({"type": "video", "name": target.name, "path": str(target.resolve())})
+            self._record_artifact(job.status.id, "video", target)
         except Exception:
             pass
         try:

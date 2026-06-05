@@ -4,13 +4,14 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>LogTudo - Automação</title>
-    <script type="module">
-      const baseUrl = (import.meta.env.BASE_URL || '/').replace(/\/+$/, '');
-      window.LOGTUDO_BASE_PATH = baseUrl === '' ? '' : baseUrl;
-    </script>
+
+    <script type="module" crossorigin src="/contratos/assets/index-Zez5rfhP.js"></script>
+    <link rel="stylesheet" crossorigin href="/contratos/assets/index-DCTW6VmF.css">
+    <script>window.LOGTUDO_BASE_PATH = "";</script>
   </head>
   <body>
     <div id="root"></div>
-    <script type="module" src="/src/main.jsx"></script>
+
   </body>
 </html>
+

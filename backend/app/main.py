@@ -1,9 +1,21 @@
 from __future__ import annotations
 
+import sys
 import asyncio
+
+# On Windows, Playwright needs an event loop policy with subprocess support.
+# Keep Proactor explicit so browser subprocesses can start correctly.
+if sys.platform.startswith("win"):
+    try:
+        asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+    except Exception:
+        pass
 import json
 import os
 import tempfile
+import sqlite3
+import uuid
+import shutil
 from pathlib import Path
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
@@ -31,8 +43,6 @@ app = FastAPI(title="LogTudo Automacao API", version="1.0.0", root_path=BASE_PAT
 if BASE_PATH:
     @app.middleware("http")
     async def strip_base_path_middleware(request: Request, call_next):
-        # Support proxy with and without StripPrefix. If Traefik strips "/contratos",
-        # we keep root_path for URL generation while preserving the stripped path.
         scope_path = request.scope.get("path", "")
         forwarded_prefix = request.headers.get("x-forwarded-prefix", "").strip()
         if forwarded_prefix and forwarded_prefix.startswith("/"):
@@ -52,7 +62,9 @@ app.add_middleware(
 )
 
 web_dir = Path(__file__).parent.parent.parent / "web"
-index_path = web_dir / "index.html"
+# Prefer the production build index.html when available
+index_dist_path = web_dir / "dist" / "index.html"
+index_path = index_dist_path if index_dist_path.exists() else web_dir / "index.html"
 asset_dir_candidates = [web_dir / "assets", web_dir / "dist" / "assets"]
 assets_dir = next((p for p in asset_dir_candidates if p.exists()), None)
 
@@ -61,7 +73,7 @@ if assets_dir:
     if BASE_PATH:
         app.mount(f"{BASE_PATH}/assets", StaticFiles(directory=str(assets_dir)), name="web-assets-basepath")
 
-from .services.automation_manager import ARTIFACTS_DIR
+from .services.automation_manager import ARTIFACTS_DIR, DB_PATH, _resolve_artifact_disk_path
 ARTIFACTS_DIR.mkdir(parents=True, exist_ok=True)
 app.mount("/artifacts", StaticFiles(directory=str(ARTIFACTS_DIR)), name="artifacts-static")
 if BASE_PATH:
@@ -69,15 +81,18 @@ if BASE_PATH:
 
 
 @app.get("/artifacts/{filename:path}")
-@app.get("/contratos/artifacts/{filename:path}")
 def serve_artifact_file(filename: str):
-    file_path = ARTIFACTS_DIR / filename
-    if not file_path.exists() or not file_path.is_file():
+    # Tenta resolver o caminho físico real do arquivo usando o resolvedor robusto
+    resolved = _resolve_artifact_disk_path(filename, "")
+    if not resolved:
+        resolved = _resolve_artifact_disk_path(str(ARTIFACTS_DIR / filename), "")
+        
+    if not resolved or not resolved.exists() or not resolved.is_file():
         raise HTTPException(status_code=404, detail="Arquivo de artefato nao encontrado")
     
     # Define o content-type correto
     media_type = "application/octet-stream"
-    suffix = file_path.suffix.lower()
+    suffix = resolved.suffix.lower()
     if suffix == ".png":
         media_type = "image/png"
     elif suffix in (".jpg", ".jpeg"):
@@ -86,8 +101,180 @@ def serve_artifact_file(filename: str):
         media_type = "video/webm"
     elif suffix == ".mp4":
         media_type = "video/mp4"
+    elif suffix == ".zip":
+        media_type = "application/zip"
         
-    return FileResponse(str(file_path), media_type=media_type)
+    return FileResponse(str(resolved), media_type=media_type)
+
+
+@app.post("/api/files")
+async def upload_file_endpoint(file: UploadFile = File(...)):
+    """
+    Endpoint para realizar o upload inicial de planilhas de faturamento.
+    Retorna o ID do arquivo gerado e o caminho persistido.
+    """
+    suffix = Path(file.filename or "").suffix.lower()
+    if suffix not in {".xlsx", ".xls"}:
+        raise HTTPException(status_code=400, detail="Arquivo inválido. Use .xlsx ou .xls")
+        
+    from .services.automation_manager import UPLOADS_DIR
+    file_id = str(uuid.uuid4())
+    stored_file = UPLOADS_DIR / f"{file_id}_{file.filename}"
+    
+    try:
+        with open(stored_file, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erro ao salvar arquivo de upload: {e}")
+        
+    return {
+        "file_id": file_id,
+        "filename": file.filename,
+        "stored_path": str(stored_file.resolve())
+    }
+
+
+@app.get("/api/results/files")
+def list_results_files():
+    """
+    Retorna uma listagem consolidada de todas as planilhas (originais ou processadas)
+    armazenadas no banco de dados e verifica se estão fisicamente disponíveis para download.
+    """
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT * FROM job_artifacts 
+            WHERE type IN ('result_file', 'input_file')
+            ORDER BY created_at DESC
+        """)
+        rows = cursor.fetchall()
+        conn.close()
+        
+        results = []
+        for r in rows:
+            resolved = _resolve_artifact_disk_path(r["file_path"], r["job_id"])
+            results.append({
+                "id": r["id"],
+                "job_id": r["job_id"],
+                "type": r["type"],
+                "file_path": r["file_path"],
+                "filename": Path(r["file_path"]).name,
+                "created_at": r["created_at"],
+                "available": resolved is not None
+            })
+        return results
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erro ao listar arquivos do histórico: {e}")
+
+
+@app.get("/api/results/files/{artifact_id}/download")
+def download_result_file(artifact_id: str):
+    """
+    Realiza o download de planilhas baseado no resolvedor de caminhos físicos robusto.
+    """
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM job_artifacts WHERE id = ?", (artifact_id,))
+        r = cursor.fetchone()
+        conn.close()
+        
+        # Caso não encontre na nova tabela, tenta buscar no histórico legado para manter compatibilidade
+        if not r:
+            conn = sqlite3.connect(DB_PATH)
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM results_history WHERE id = ?", (artifact_id,))
+            rh = cursor.fetchone()
+            conn.close()
+            if rh and rh["result_file"]:
+                r = {"file_path": rh["result_file"], "job_id": rh["job_id"]}
+                
+        if not r:
+            raise HTTPException(status_code=404, detail="Arquivo não encontrado")
+            
+        resolved = _resolve_artifact_disk_path(r["file_path"], r["job_id"])
+        if not resolved or not resolved.exists() or not resolved.is_file():
+            raise HTTPException(status_code=404, detail="Arquivo físico do artefato não encontrado no disco")
+            
+        return FileResponse(path=str(resolved), filename=resolved.name)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erro ao baixar arquivo: {e}")
+
+
+@app.get("/api/admin/jobs/{job_id}/artifacts")
+def list_job_artifacts(job_id: str):
+    """
+    Endpoint administrativo para retornar a lista de todos os artefatos de um determinado Job.
+    """
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM job_artifacts WHERE job_id = ?", (job_id,))
+        rows = cursor.fetchall()
+        conn.close()
+        
+        results = []
+        for r in rows:
+            resolved = _resolve_artifact_disk_path(r["file_path"], r["job_id"])
+            results.append({
+                "id": r["id"],
+                "job_id": r["job_id"],
+                "type": r["type"],
+                "file_path": r["file_path"],
+                "filename": Path(r["file_path"]).name,
+                "created_at": r["created_at"],
+                "available": resolved is not None
+            })
+        return results
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erro ao listar artefatos do job: {e}")
+
+
+@app.get("/api/admin/artifacts/{artifact_id}/file")
+def get_admin_artifact_file(artifact_id: str):
+    """
+    Endpoint administrativo para baixar ou servir diretamente qualquer arquivo de artefato pelo seu ID.
+    """
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM job_artifacts WHERE id = ?", (artifact_id,))
+        r = cursor.fetchone()
+        conn.close()
+        
+        if not r:
+            raise HTTPException(status_code=404, detail="Artefato não encontrado")
+            
+        resolved = _resolve_artifact_disk_path(r["file_path"], r["job_id"])
+        if not resolved or not resolved.exists() or not resolved.is_file():
+            raise HTTPException(status_code=404, detail="Arquivo físico do artefato não encontrado no disco")
+            
+        media_type = "application/octet-stream"
+        suffix = resolved.suffix.lower()
+        if suffix == ".png":
+            media_type = "image/png"
+        elif suffix in (".jpg", ".jpeg"):
+            media_type = "image/jpeg"
+        elif suffix == ".webm":
+            media_type = "video/webm"
+        elif suffix == ".mp4":
+            media_type = "video/mp4"
+        elif suffix == ".zip":
+            media_type = "application/zip"
+            
+        return FileResponse(path=str(resolved), media_type=media_type, filename=resolved.name)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erro ao acessar arquivo do artefato: {e}")
 
 
 
@@ -174,7 +361,7 @@ async def create_job(
     senha: str = Form(""),
     atraso_fases: float = Form(1.0),
     atraso_etapas: float = Form(0.3),
-    dados_km: str = Form("10"),
+    dados_km: str = Form("20"),
     aceitar_frete_minimo_antt: bool = Form(True),
 ):
     suffix = Path(file.filename or "").suffix.lower()
@@ -335,4 +522,5 @@ def spa_fallback(full_path: str):
     if full_path.startswith(("api/", "health", "assets/", "artifacts/")):
         raise HTTPException(status_code=404, detail="Not found")
     return _render_index_html()
+
 

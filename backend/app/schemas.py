@@ -9,7 +9,7 @@ class AutomationConfig(BaseModel):
     senha: str = ""
     atraso_fases: float = Field(default=1.0, ge=0)
     atraso_etapas: float = Field(default=0.3, ge=0)
-    dados_km: str = "10"
+    dados_km: str = "20"
     aceitar_frete_minimo_antt: bool = True
 
 

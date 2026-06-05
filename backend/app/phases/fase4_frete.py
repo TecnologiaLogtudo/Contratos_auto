@@ -2,6 +2,33 @@ import threading
 import time
 from playwright.sync_api import Page, Error
 from typing import Callable, Dict
+import re
+import unicodedata
+
+
+def _normalizar_texto(texto: str) -> str:
+    texto = unicodedata.normalize("NFD", str(texto or ""))
+    texto = "".join(char for char in texto if unicodedata.category(char) != "Mn")
+    return " ".join(texto.upper().split())
+
+
+def _opcao_destinatario_tam_para_cidade(option_text: str, cidade: str) -> bool:
+    texto_normalizado = _normalizar_texto(option_text)
+    cidade_normalizada = _normalizar_texto(cidade)
+    padrao_cnpj_tam = r"^\d{2}\.\d{3}\.\d{3}/\d{4}-\d{2}\s+-\s+TAM LINHAS AEREAS\s+-\s+"
+
+    return (
+        re.search(padrao_cnpj_tam, texto_normalizado) is not None
+        and f"TAM LINHAS AEREAS - {cidade_normalizada} -" in texto_normalizado
+    )
+
+
+def _alternativas_busca_cidade(cidade: str) -> list[str]:
+    alternativas = [cidade]
+    if cidade == "J. Pessoa":
+        alternativas.extend(["João Pessoa", "Pessoa"])
+    return alternativas
+
 
 def preencher_frete(
     page: Page, 
@@ -21,14 +48,77 @@ def preencher_frete(
         nome_motorista = dados_linha.get("Nome", "NOME NÃO ENCONTRADO")
         log_callback(f"[F4] [Item {nro_cotacao}] --- INÍCIO: DADOS DO FRETE ---", "FASE")
 
-        # ETAPA 1: Destinatário "Diversos"
+        # ETAPA 1: Destinatário TAM da cidade da planilha
         pause_event.wait()
-        log_callback(f"[F4] [Item {nro_cotacao}] Etapa 1: Preenchendo Destinatário 'Diversos'...", "DEBUG")
-        page.fill('input[name="pesquisa_enderecoDestinatario_id"]', "Diversos")
-        time.sleep(atraso_etapas)
-        page.click('i[name="botaoPesquisa_enderecoDestinatario_id"]')
-        page.wait_for_timeout(500)
-        time.sleep(atraso_etapas)
+        if not cidade or cidade in ["N/A", "CIDADE NÃO ENCONTRADA"]:
+            log_callback(f"[F4] [Item {nro_cotacao}] ERRO: Cidade inválida para pesquisa de Destinatário ('{cidade}').", "ERRO")
+            return False
+
+        destinatario_selector = 'select[name="dados_enderecoDestinatario_id"]'
+
+        def _buscar_e_selecionar_destinatario(cidade_busca: str) -> bool:
+            try:
+                log_callback(f"[F4] [Item {nro_cotacao}] Etapa 1: Pesquisando Destinatário TAM pela cidade '{cidade_busca}'...", "DEBUG")
+                page.fill('input[name="pesquisa_enderecoDestinatario_id"]', cidade_busca)
+                time.sleep(atraso_etapas)
+                page.click('i[name="botaoPesquisa_enderecoDestinatario_id"]')
+                page.wait_for_selector(f'{destinatario_selector} option[value]:not([value=""])', state='attached', timeout=10000)
+                time.sleep(atraso_etapas)
+
+                options_destinatario = page.locator(destinatario_selector).locator("option").all()
+                textos_destinatario = [opt.inner_text().strip() for opt in options_destinatario if opt.inner_text().strip()]
+                log_callback(f"[F4] [Item {nro_cotacao}] Opções de Destinatário encontradas para '{cidade_busca}': {textos_destinatario}", "DEBUG")
+
+                if any("Nenhum registro encontrado!" in texto for texto in textos_destinatario):
+                    return False
+
+                destinatario_value = None
+                destinatario_text = ""
+                for opt in options_destinatario:
+                    option_text = opt.inner_text().strip()
+                    if _opcao_destinatario_tam_para_cidade(option_text, cidade_busca):
+                        destinatario_value = opt.get_attribute("value")
+                        destinatario_text = option_text
+                        break
+
+                if not destinatario_value:
+                    return False
+
+                page.select_option(destinatario_selector, value=destinatario_value)
+                time.sleep(atraso_etapas)
+                log_callback(f"[F4] [Item {nro_cotacao}] Destinatário selecionado: '{destinatario_text}' (valor: {destinatario_value}).", "INFO")
+                return True
+
+            except Exception as e:
+                log_callback(f"[F4] [Item {nro_cotacao}] ERRO durante a busca/seleção de Destinatário para '{cidade_busca}': {e}", "ERRO")
+                return False
+
+        destinatario_encontrado = False
+        for cidade_busca in _alternativas_busca_cidade(cidade):
+            if _buscar_e_selecionar_destinatario(cidade_busca):
+                destinatario_encontrado = True
+                break
+
+        if not destinatario_encontrado:
+            log_callback(f"[F4] [Item {nro_cotacao}] ERRO: Não foi encontrada opção de Destinatário no padrão 'CNPJ - TAM LINHAS AEREAS - {cidade} - ...'.", "ERRO")
+            return False
+
+        try:
+            remetente_selector = 'select[name="dados_enderecoRemetente_id"]'
+            page.wait_for_selector(remetente_selector, state='attached', timeout=5000)
+            remetente_value = page.input_value(remetente_selector)
+            destinatario_value = page.input_value(destinatario_selector)
+            remetente_text = page.locator(f'{remetente_selector} option[value="{remetente_value}"]').inner_text().strip() if remetente_value else ""
+
+            if destinatario_value != remetente_value:
+                log_callback(f"[F4] [Item {nro_cotacao}] ERRO: Destinatário selecionado (valor {destinatario_value}) difere do Remetente (valor {remetente_value}). Remetente atual: '{remetente_text}'.", "ERRO")
+                return False
+
+        except Exception as e:
+            log_callback(f"[F4] [Item {nro_cotacao}] ERRO ao comparar Destinatário com Remetente: {e}", "ERRO")
+            return False
+
+        log_callback(f"[F4] [Item {nro_cotacao}] Destinatário confirmado igual ao Remetente selecionado.", "INFO")
 
         # ETAPA 2: Cidade (da planilha)
         pause_event.wait()
