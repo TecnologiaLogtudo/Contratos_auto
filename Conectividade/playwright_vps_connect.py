@@ -9,6 +9,7 @@ from playwright.sync_api import Browser, BrowserContext, Page, Playwright, sync_
 @dataclass
 class PlaywrightVPSConfig:
     headless: bool = True
+    browser_channel: Optional[str] = "chrome"
     timeout_ms: int = 30000
     viewport_width: int = 1280
     viewport_height: int = 720
@@ -47,9 +48,15 @@ class PlaywrightVPSClient:
 
     def start(self) -> Page:
         self.playwright = sync_playwright().start()
+        launch_args = {
+            "headless": self.config.headless,
+            "args": self.config.browser_args,
+        }
+        if self.config.browser_channel:
+            launch_args["channel"] = self.config.browser_channel
+
         self.browser = self.playwright.chromium.launch(
-            headless=self.config.headless,
-            args=self.config.browser_args,
+            **launch_args,
         )
 
         context_args = {

@@ -23,6 +23,7 @@ def launch_browser(log_callback: Callable) -> Optional[Tuple[any, Browser, Brows
         log_callback(f"[F2] Modo do navegador: {modo_navegador} (PLAYWRIGHT_HEADLESS={headless_env!r}).", "DEBUG")
         cfg = PlaywrightVPSConfig(
             headless=headless,
+            browser_channel=os.getenv("PLAYWRIGHT_BROWSER_CHANNEL", "chrome").strip() or None,
             record_video_dir=str(ARTIFACTS_TEMP_DIR),
         )
 
@@ -30,7 +31,7 @@ def launch_browser(log_callback: Callable) -> Optional[Tuple[any, Browser, Brows
         client.start()
         browser = client.browser
         context = client.context
-        log_callback("[F2] Navegador Chromium iniciado.", "DEBUG")
+        log_callback("[F2] Navegador Chrome iniciado.", "DEBUG")
         
         return client.playwright, browser, context
         

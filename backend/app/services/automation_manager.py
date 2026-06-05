@@ -293,13 +293,14 @@ class AutomationManager:
         if CONFIG_PATH.exists():
             parser.read(CONFIG_PATH, encoding="utf-8")
 
+        # Prioridade: Variáveis de Ambiente -> config.ini -> fallback padrão
         return AutomationConfig(
-            login=parser.get("CREDENCIAS", "login", fallback=""),
-            senha=parser.get("CREDENCIAS", "senha", fallback=""),
-            atraso_fases=parser.getfloat("AUTOMACAO", "atrasofases", fallback=1.0),
-            atraso_etapas=parser.getfloat("AUTOMACAO", "atrasoetapas", fallback=0.3),
-            dados_km=parser.get("AUTOMACAO", "dados_km", fallback="20"),
-            aceitar_frete_minimo_antt=parser.getboolean("AUTOMACAO", "aceitarfreteminimoantt", fallback=True),
+            login=os.getenv("AUTOMACAO_LOGIN", parser.get("CREDENCIAS", "login", fallback="")),
+            senha=os.getenv("AUTOMACAO_SENHA", parser.get("CREDENCIAS", "senha", fallback="")),
+            atraso_fases=float(os.getenv("AUTOMACAO_ATRASOFASES", parser.getfloat("AUTOMACAO", "atrasofases", fallback=1.0))),
+            atraso_etapas=float(os.getenv("AUTOMACAO_ATRASOETAPAS", parser.getfloat("AUTOMACAO", "atrasoetapas", fallback=0.3))),
+            dados_km=os.getenv("AUTOMACAO_DADOS_KM", parser.get("AUTOMACAO", "dados_km", fallback="20")),
+            aceitar_frete_minimo_antt=os.getenv("AUTOMACAO_ACEITAR_FRETE_MINIMO", str(parser.getboolean("AUTOMACAO", "aceitarfreteminimoantt", fallback=True))).lower() in ("true", "1", "yes"),
         )
 
     def save_config(self, config: AutomationConfig) -> AutomationConfig:
