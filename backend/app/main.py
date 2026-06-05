@@ -24,10 +24,10 @@ from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-BASE_PATH = os.getenv('BASE_PATH', '').strip()
-if BASE_PATH and not BASE_PATH.startswith('/'):
+BASE_PATH = os.getenv('BASE_PATH', '/contratos').strip()
+if not BASE_PATH.startswith('/'):
     BASE_PATH = f'/{BASE_PATH}'
-BASE_PATH = BASE_PATH.rstrip('/') if BASE_PATH and BASE_PATH != '/' else ''
+BASE_PATH = BASE_PATH.rstrip('/') if BASE_PATH != '/' else ''
 
 from .schemas import AutomationConfig, JobInfo, PreviewResponse
 from .services.automation_manager import manager
@@ -38,20 +38,8 @@ class DeleteResultsPayload(BaseModel):
     password: str
 
 
-app = FastAPI(title="LogTudo Automacao API", version="1.0.0", root_path=BASE_PATH or "")
-
-if BASE_PATH:
-    @app.middleware("http")
-    async def strip_base_path_middleware(request: Request, call_next):
-        scope_path = request.scope.get("path", "")
-        forwarded_prefix = request.headers.get("x-forwarded-prefix", "").strip()
-        if forwarded_prefix and forwarded_prefix.startswith("/"):
-            request.scope["root_path"] = forwarded_prefix.rstrip("/")
-
-        if scope_path.startswith(BASE_PATH):
-            request.scope["root_path"] = BASE_PATH
-            request.scope["path"] = scope_path[len(BASE_PATH):] or "/"
-        return await call_next(request)
+# Remove root_path to avoid conflict with Nginx rewrite and manual stripping
+app = FastAPI(title="LogTudo Automacao API", version="1.0.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -70,24 +58,23 @@ assets_dir = next((p for p in asset_dir_candidates if p.exists()), None)
 
 if assets_dir:
     app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="web-assets")
-    if BASE_PATH:
-        app.mount(f"{BASE_PATH}/assets", StaticFiles(directory=str(assets_dir)), name="web-assets-basepath")
 
 from .services.automation_manager import ARTIFACTS_DIR, DB_PATH, _resolve_artifact_disk_path
 ARTIFACTS_DIR.mkdir(parents=True, exist_ok=True)
-app.mount("/artifacts", StaticFiles(directory=str(ARTIFACTS_DIR)), name="artifacts-static")
-if BASE_PATH:
-    app.mount(f"{BASE_PATH}/artifacts", StaticFiles(directory=str(ARTIFACTS_DIR)), name="artifacts-static-basepath")
 
 
 @app.get("/artifacts/{filename:path}")
 def serve_artifact_file(filename: str):
+    """
+    Serve arquivos de artefatos de forma robusta, buscando em múltiplos candidatos.
+    """
     # Tenta resolver o caminho físico real do arquivo usando o resolvedor robusto
     resolved = _resolve_artifact_disk_path(filename, "")
     if not resolved:
         resolved = _resolve_artifact_disk_path(str(ARTIFACTS_DIR / filename), "")
         
     if not resolved or not resolved.exists() or not resolved.is_file():
+        print(f"[ARTIFACTS] Arquivo nao encontrado: {filename}")
         raise HTTPException(status_code=404, detail="Arquivo de artefato nao encontrado")
     
     # Define o content-type correto
@@ -134,11 +121,18 @@ async def upload_file_endpoint(file: UploadFile = File(...)):
     }
 
 
+@app.get("/api/results/history")
+def list_results_history():
+    """
+    IMPORTANTE: Esta rota deve vir ANTES de /api/results/{job_id} para evitar conflito.
+    """
+    return manager.list_results_history()
+
+
 @app.get("/api/results/files")
 def list_results_files():
     """
-    Retorna uma listagem consolidada de todas as planilhas (originais ou processadas)
-    armazenadas no banco de dados e verifica se estão fisicamente disponíveis para download.
+    Retorna uma listagem consolidada de todas as planilhas (originais ou processadas).
     """
     try:
         conn = sqlite3.connect(DB_PATH)
@@ -205,6 +199,20 @@ def download_result_file(artifact_id: str):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Erro ao baixar arquivo: {e}")
+
+
+@app.get("/api/results/{job_id}")
+def download_result(job_id: str):
+    """
+    Retorna o arquivo de resultado de um Job específico.
+    """
+    job = manager.get_job(job_id)
+    if not job or not job.status.result_file:
+        raise HTTPException(status_code=404, detail="Resultado não disponível")
+    result_path = Path(job.status.result_file)
+    if not result_path.exists():
+        raise HTTPException(status_code=404, detail="Arquivo de resultado não encontrado")
+    return FileResponse(path=result_path, filename=result_path.name)
 
 
 @app.get("/api/admin/jobs/{job_id}/artifacts")
@@ -446,22 +454,6 @@ async def stream_logs(job_id: str):
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 
 
-@app.get("/api/results/{job_id}")
-def download_result(job_id: str):
-    job = manager.get_job(job_id)
-    if not job or not job.status.result_file:
-        raise HTTPException(status_code=404, detail="Resultado não disponível")
-    result_path = Path(job.status.result_file)
-    if not result_path.exists():
-        raise HTTPException(status_code=404, detail="Arquivo de resultado não encontrado")
-    return FileResponse(path=result_path, filename=result_path.name)
-
-
-@app.get("/api/results/history")
-def list_results_history():
-    return manager.list_results_history()
-
-
 @app.get("/api/results/history/{result_id}/download")
 def download_history_result(result_id: str):
     history = manager.list_results_history()
@@ -522,5 +514,3 @@ def spa_fallback(full_path: str):
     if full_path.startswith(("api/", "health", "assets/", "artifacts/")):
         raise HTTPException(status_code=404, detail="Not found")
     return _render_index_html()
-
-
