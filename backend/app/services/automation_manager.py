@@ -370,7 +370,8 @@ class AutomationManager:
         como o primeiro artefato (input_file).
         """
         job_id = str(uuid.uuid4())
-        log_session_id = datetime.now().strftime("%d%m%Y-%H%M")
+        # log_session_id agora inclui segundos para maior unicidade
+        log_session_id = datetime.now().strftime("%d%m%Y-%H%M%S")
         stored_file = UPLOADS_DIR / f"{job_id}_{source_file.name}"
         shutil.copyfile(source_file, stored_file)
 
@@ -910,20 +911,44 @@ class AutomationManager:
                 job.status.state = "error"
                 job.status.message = str(e)
         finally:
+            print(f"[JOB {job.status.id}] Iniciando finalização e persistência...")
             video_path = None
             try:
                 if job.page and job.page.video:
                     video_path = job.page.video.path()
-            except Exception:
-                pass
+            except Exception as e:
+                print(f"[JOB {job.status.id}] Erro ao obter caminho do vídeo: {e}")
 
-            self._close_resources(job)
-            self._collect_video_artifact(job, video_path)
-            self._finalize_result_file(job)
-            self._append_result_history(job)
-            self._append_logs_history(job)
+            try:
+                self._close_resources(job)
+            except Exception as e:
+                print(f"[JOB {job.status.id}] Erro ao fechar recursos: {e}")
+
+            try:
+                self._collect_video_artifact(job, video_path)
+            except Exception as e:
+                print(f"[JOB {job.status.id}] Erro ao coletar vídeo: {e}")
+
+            try:
+                self._finalize_result_file(job)
+            except Exception as e:
+                print(f"[JOB {job.status.id}] Erro ao finalizar arquivo de resultado: {e}")
+
+            try:
+                self._append_result_history(job)
+                print(f"[JOB {job.status.id}] Histórico de resultados persistido.")
+            except Exception as e:
+                print(f"[JOB {job.status.id}] Erro ao persistir histórico de resultados: {e}")
+
+            try:
+                self._append_logs_history(job)
+                print(f"[JOB {job.status.id}] Histórico de logs persistido.")
+            except Exception as e:
+                print(f"[JOB {job.status.id}] Erro ao persistir histórico de logs: {e}")
+
             with job.condition:
                 job.condition.notify_all()
+            print(f"[JOB {job.status.id}] Thread de execução finalizada.")
 
 
     def _sleep_or_stop(self, job: JobRuntime, seconds: float) -> None:
