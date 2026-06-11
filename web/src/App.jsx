@@ -669,7 +669,7 @@ export default function App() {
       ) : (
     <div className="app-shell">
       <aside className="sidebar">
-        <div className="brand"><div className="logo">LT</div><div><h1>LogTudo</h1><p>Automação de contratos</p></div></div>
+        <div className="brand"><div className="logo">LT</div><div><h1>LogTudo</h1><p>Automação de contratos v2.0</p></div></div>
         {MENU_ITEMS.map((item) => (
           <button
             key={item}

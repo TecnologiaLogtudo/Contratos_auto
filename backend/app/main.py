@@ -39,7 +39,7 @@ class DeleteResultsPayload(BaseModel):
 
 
 # Remove root_path to avoid conflict with Nginx rewrite and manual stripping
-app = FastAPI(title="LogTudo Automacao API", version="1.0.0")
+app = FastAPI(title="LogTudo Automacao API", version="2.0.0")
 
 app.add_middleware(
     CORSMiddleware,

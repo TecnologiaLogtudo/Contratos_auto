@@ -38,7 +38,7 @@ def get_persistent_path(filename):
     return os.path.join(os.path.dirname(__file__), filename)
 
 # --- Constantes ---
-APP_TITLE = "Automação de Contratos LogTudo"
+APP_TITLE = "Automação de Contratos LogTudo v2.0"
 LOG_FILENAME = get_persistent_path("log_automacao.txt")
 CONFIG_FILENAME = get_persistent_path("config.ini")
 URL_DESTINO = "https://logtudo.e-login.net/versoes/versao5.0/rotinas/formulario.php?rotina=trans_conhecimento&OP=O1&_qsf=1"

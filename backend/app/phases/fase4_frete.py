@@ -108,17 +108,42 @@ def preencher_frete(
             page.wait_for_selector(remetente_selector, state='attached', timeout=5000)
             remetente_value = page.input_value(remetente_selector)
             destinatario_value = page.input_value(destinatario_selector)
-            remetente_text = page.locator(f'{remetente_selector} option[value="{remetente_value}"]').inner_text().strip() if remetente_value else ""
+
+            # Tenta obter o texto do remetente para o log
+            remetente_text = "N/A"
+            if remetente_value:
+                try:
+                    remetente_text = page.locator(f'{remetente_selector} option[value="{remetente_value}"]').inner_text().strip()
+                except:
+                    remetente_text = f"Valor {remetente_value}"
 
             if destinatario_value != remetente_value:
-                log_callback(f"[F4] [Item {nro_cotacao}] ERRO: Destinatário selecionado (valor {destinatario_value}) difere do Remetente (valor {remetente_value}). Remetente atual: '{remetente_text}'.", "ERRO")
-                return False
+                if not remetente_value:
+                    log_callback(f"[F4] [Item {nro_cotacao}] ERRO: Remetente está vazio. Não é possível sincronizar o Destinatário.", "ERRO")
+                    return False
+
+                log_callback(f"[F4] [Item {nro_cotacao}] AVISO: Destinatário diferente do Remetente. Tentando selecionar o valor exato do Remetente ('{remetente_text}')...", "AVISO")
+
+                try:
+                    # Tenta selecionar o valor do remetente no campo de destinatário
+                    page.select_option(destinatario_selector, value=remetente_value)
+                    time.sleep(atraso_etapas)
+
+                    # Verifica se a seleção funcionou
+                    if page.input_value(destinatario_selector) == remetente_value:
+                        log_callback(f"[F4] [Item {nro_cotacao}] Destinatário sincronizado com o Remetente com sucesso.", "INFO")
+                    else:
+                        log_callback(f"[F4] [Item {nro_cotacao}] ERRO: Não foi possível selecionar o valor do Remetente no campo Destinatário (opção não disponível).", "ERRO")
+                        return False
+                except Exception as e_sel:
+                    log_callback(f"[F4] [Item {nro_cotacao}] ERRO ao tentar sincronizar Destinatário: {e_sel}", "ERRO")
+                    return False
 
         except Exception as e:
-            log_callback(f"[F4] [Item {nro_cotacao}] ERRO ao comparar Destinatário com Remetente: {e}", "ERRO")
+            log_callback(f"[F4] [Item {nro_cotacao}] ERRO ao comparar/sincronizar Destinatário com Remetente: {e}", "ERRO")
             return False
 
-        log_callback(f"[F4] [Item {nro_cotacao}] Destinatário confirmado igual ao Remetente selecionado.", "INFO")
+        log_callback(f"[F4] [Item {nro_cotacao}] Destinatário e Remetente estão sincronizados.", "INFO")
 
         # ETAPA 2: Cidade (da planilha)
         pause_event.wait()
