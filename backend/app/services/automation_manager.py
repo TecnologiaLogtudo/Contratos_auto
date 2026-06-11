@@ -370,8 +370,8 @@ class AutomationManager:
         como o primeiro artefato (input_file).
         """
         job_id = str(uuid.uuid4())
-        # log_session_id agora inclui segundos para maior unicidade
-        log_session_id = datetime.now().strftime("%d%m%Y-%H%M%S")
+        # log_session_id agora inclui segundos e um identificador único para garantir unicidade real
+        log_session_id = f"{datetime.now().strftime('%d%m%Y-%H%M%S')}-{uuid.uuid4().hex[:6]}"
         stored_file = UPLOADS_DIR / f"{job_id}_{source_file.name}"
         shutil.copyfile(source_file, stored_file)
 
