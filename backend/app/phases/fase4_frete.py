@@ -333,7 +333,23 @@ def preencher_frete(
         if partes_obs:
             observacao = " - ".join(partes_obs)
             log_callback(f"[F4] [Item {nro_cotacao}] Preenchendo observação com: '{observacao}'", "DEBUG")
-            page.fill('textarea[name="dados_observacaoPV"]', observacao)
+            
+            obs_selector = 'textarea[name="dados_observacaoPV"]'
+            try:
+                # Clica para dar foco e disparar o onfocus="montaObsPV();"
+                page.click(obs_selector)
+                page.wait_for_timeout(500) # Aguarda um pouco para o script da página rodar
+                
+                # Preenche o valor
+                page.fill(obs_selector, observacao)
+                
+                # Dispara eventos manualmente para garantir que a página reconheça a mudança
+                page.locator(obs_selector).dispatch_event('input')
+                page.locator(obs_selector).dispatch_event('change')
+                
+                log_callback(f"[F4] [Item {nro_cotacao}] Observação preenchida e eventos disparados.", "DEBUG")
+            except Error as e:
+                log_callback(f"[F4] [Item {nro_cotacao}] AVISO: Erro ao preencher observação: {e}", "AVISO")
         else:
             log_callback(f"[F4] [Item {nro_cotacao}] Nome e placa não encontrados. Pulando observação.", "AVISO")
         time.sleep(atraso_etapas)

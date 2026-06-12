@@ -138,6 +138,19 @@ def preencher_contrato_frete(
 
         time.sleep(atraso_etapas)
 
+        # ETAPA 4.5: Selecionar Composição Veicular
+        pause_event.wait()
+        log_callback(f"[F5] [Item {nro_cotacao}] Etapa 4.5: Selecionando Composição Veicular 'Sim'...", "DEBUG")
+        try:
+            composicao_veicular_selector = 'select[name="dados_composicao_veicular"]'
+            page.wait_for_selector(composicao_veicular_selector, state="visible", timeout=5000)
+            page.select_option(composicao_veicular_selector, value="S")
+            log_callback(f"[F5] [Item {nro_cotacao}] Composição Veicular 'Sim' selecionada.", "DEBUG")
+        except Error as e:
+            log_callback(f"[F5] [Item {nro_cotacao}] AVISO: Não foi possível selecionar Composição Veicular: {e}", "AVISO")
+
+        time.sleep(atraso_etapas)
+
         # ETAPA 5: Selecionar Regra
         pause_event.wait()
         log_callback(f"[F5] [Item {nro_cotacao}] Etapa 5: Selecionando Regra de Carreto...", "DEBUG")
