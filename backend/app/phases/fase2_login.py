@@ -74,7 +74,7 @@ def perform_login(
                 page.on("console", lambda msg: browser_log_callback(msg.text, msg.type.upper()))
         
         log_callback("[F2] Navegando para a página de login...", "INFO")
-        page.goto("https://logtudo.e-login.net/", wait_until="networkidle")
+        page.goto("https://logtudo.e-login.net/", wait_until="load")
 
         log_callback("[F2] Preenchendo usuário...", "DEBUG")
 
@@ -90,13 +90,15 @@ def perform_login(
         # Usamos o ID #botaoSubmit que é mais confiável
         botao_submit = page.locator("#botaoSubmit")
         
-        if not botao_submit.is_visible():
+        try:
+            botao_submit.wait_for(state="visible", timeout=10000)
+        except Error:
             log_callback("[F2] Erro: Botão de submit '#botaoSubmit' não está visível.", "ERRO")
             return None
 
         # Combina o clique com a espera pela navegação
         try:
-            with page.expect_navigation(timeout=60000, wait_until="networkidle"):
+            with page.expect_navigation(timeout=60000, wait_until="load"):
                 botao_submit.click()
                 
         except Error as e_timeout:
@@ -122,7 +124,7 @@ def perform_login(
                     log_callback("[F2] Validação 2FA detectada. Aguardando 30s para intervenção manual...", "AVISO")
                     log_callback("[F2] Por favor, complete o 2FA no navegador.", "AVISO")
                     # Espera a próxima navegação (usuário completou o 2FA)
-                    page.wait_for_navigation(timeout=30000, wait_until="networkidle")
+                    page.wait_for_navigation(timeout=30000, wait_until="load")
                 else:
                     log_callback("[F2] Não foi possível detectar 2FA, mas o login travou.", "ERRO")
                     return None

@@ -367,8 +367,8 @@ async def create_job(
     file: UploadFile = File(...),
     login: str = Form(""),
     senha: str = Form(""),
-    atraso_fases: float = Form(1.0),
-    atraso_etapas: float = Form(0.3),
+    atraso_fases: float = Form(0.5),
+    atraso_etapas: float = Form(0.15),
     dados_km: str = Form("20"),
     aceitar_frete_minimo_antt: bool = Form(True),
 ):
