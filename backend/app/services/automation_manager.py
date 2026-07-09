@@ -126,6 +126,8 @@ def init_db() -> None:
             cursor.execute("ALTER TABLE results_history ADD COLUMN pendentes INTEGER DEFAULT 0")
         if "taxa_sucesso" not in existing_columns:
             cursor.execute("ALTER TABLE results_history ADD COLUMN taxa_sucesso REAL DEFAULT 0.0")
+        if "duracao" not in existing_columns:
+            cursor.execute("ALTER TABLE results_history ADD COLUMN duracao TEXT DEFAULT ''")
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS logs_history (
                 id TEXT PRIMARY KEY,
@@ -181,6 +183,7 @@ class JobRuntime:
     critical_actions: list[dict] = field(default_factory=list)
     browser_logs: list[dict] = field(default_factory=list)
     artifacts: list[dict] = field(default_factory=list)
+    start_time: float = field(default_factory=time.time)
 
     def emit(self, message: str, level: str = "INFO") -> None:
         with self.lock:
@@ -585,6 +588,12 @@ class AutomationManager:
         counts = self._count_result_statuses(job.status.result_file)
         total_contabilizado = counts["sucessos"] + counts["erros"] + counts["pendentes"]
         taxa_sucesso = round((counts["sucessos"] / total_contabilizado) * 100, 2) if total_contabilizado else 0.0
+        
+        duration_s = time.time() - job.start_time
+        mins = int(duration_s // 60)
+        secs = int(duration_s % 60)
+        duracao_str = f"{mins}m {secs}s"
+        
         item = {
             "id": job.status.id,
             "job_id": job.status.id,
@@ -598,6 +607,7 @@ class AutomationManager:
             "erros": counts["erros"],
             "pendentes": counts["pendentes"],
             "taxa_sucesso": taxa_sucesso,
+            "duracao": duracao_str,
             "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         }
 
@@ -607,12 +617,12 @@ class AutomationManager:
             cursor = conn.cursor()
             cursor.execute("""
                 INSERT OR REPLACE INTO results_history (
-                    id, job_id, log_session_id, arquivo_original, result_file, status, total, processados, sucessos, erros, pendentes, taxa_sucesso, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    id, job_id, log_session_id, arquivo_original, result_file, status, total, processados, sucessos, erros, pendentes, taxa_sucesso, duracao, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 item["id"], item["job_id"], item["log_session_id"], item["arquivo_original"], item["result_file"],
                 item["status"], item["total"], item["processados"], item["sucessos"], item["erros"],
-                item["pendentes"], item["taxa_sucesso"], item["created_at"]
+                item["pendentes"], item["taxa_sucesso"], item["duracao"], item["created_at"]
             ))
             conn.commit()
             conn.close()

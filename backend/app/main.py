@@ -463,7 +463,11 @@ def download_history_result(result_id: str):
     path = Path(item["result_file"])
     if not path.exists():
         raise HTTPException(status_code=404, detail="Arquivo não encontrado")
-    return FileResponse(path=path, filename=path.name)
+    
+    # Define o nome do arquivo para download como {id_do_resultado}{extensão_original}
+    download_filename = f"{result_id}{path.suffix}"
+    
+    return FileResponse(path=path, filename=download_filename)
 
 
 @app.post("/api/results/delete")

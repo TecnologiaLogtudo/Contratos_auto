@@ -419,7 +419,7 @@ export default function App() {
             <table>
               <thead>
                 <tr>
-                  <th></th><th>Arquivo</th><th>Job</th><th>Status</th><th>Sucessos</th><th>Erros</th><th>Pendentes</th><th>Criado em</th><th>Ação</th>
+                  <th></th><th>Arquivo</th><th>Job</th><th>Status</th><th>Sucessos</th><th>Erros</th><th>Pendentes</th><th>Criado em</th><th>Duração</th><th>Ação</th>
                 </tr>
               </thead>
               <tbody>
@@ -433,7 +433,8 @@ export default function App() {
                     <td>{row.erros ?? 0}</td>
                     <td>{row.pendentes ?? 0}</td>
                     <td>{row.created_at}</td>
-                    <td>{row.result_file ? <a className="secondary download-link" href={`${API_BASE}/api/results/history/${row.id}/download`}>Download</a> : '-'}</td>
+                    <td>{row.duracao || '-'}</td>
+                    <td>{row.result_file ? <a className="secondary download-link" href={`${API_BASE}/api/results/history/${row.id}/download`} download>Download</a> : '-'}</td>
                   </tr>
                 ))}
               </tbody>
