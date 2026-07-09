@@ -96,41 +96,55 @@ def perform_login(
             log_callback("[F2] Erro: Botão de submit '#botaoSubmit' não está visível.", "ERRO")
             return None
 
-        # Combina o clique com a espera pela navegação
+        # Combina o clique com a monitoração de erros ou mudança de rota
         try:
-            with page.expect_navigation(timeout=60000, wait_until="load"):
-                botao_submit.click()
-                
-        except Error as e_timeout:
-            # Handle de Timeout (pode ser 2FA ou senha errada)
-            log_callback(f"[F2] Timeout ao esperar navegação pós-login: {e_timeout}", "AVISO")
+            botao_submit.click()
             
-            # Verifica se é erro de senha
-            try:
-                erro_box = page.locator(".swal2-html-container")
-                if erro_box.is_visible(timeout=3000): # Espera curta pelo erro
-                    if "Usuário ou Senha inválida" in erro_box.text_content():
-                        log_callback("[F2] Erro de Login: Usuário ou Senha inválida.", "ERRO")
-                        return None
-            except Error:
-                pass # Ignora se não achar a caixa de erro
-
-            # Verifica se é 2FA
-            try:
-                # Tenta localizar um campo comum de 2FA (ex: 'token')
-                # (Ajuste 'input[name="token"]' se o seletor for outro)
-                token_field = page.locator('input[name="token"]') 
-                if token_field.is_visible(timeout=5000):
-                    log_callback("[F2] Validação 2FA detectada. Aguardando 30s para intervenção manual...", "AVISO")
-                    log_callback("[F2] Por favor, complete o 2FA no navegador.", "AVISO")
-                    # Espera a próxima navegação (usuário completou o 2FA)
-                    page.wait_for_navigation(timeout=30000, wait_until="load")
-                else:
-                    log_callback("[F2] Não foi possível detectar 2FA, mas o login travou.", "ERRO")
+            login_sucesso = False
+            url_login_inicial = page.url
+            
+            for _ in range(60): # Aguarda até 60 segundos
+                # 1. Verifica se apareceu erro de texto na interface
+                error_p = page.locator("p.error-message")
+                if error_p.is_visible():
+                    msg = error_p.text_content().strip()
+                    log_callback(f"[F2] Erro de Login (UI): {msg}", "ERRO")
                     return None
-            except Error:
-                 log_callback("[F2] Login falhou (possível timeout ou erro desconhecido).", "ERRO")
-                 return None
+                    
+                # 2. Verifica erro no SweetAlert
+                swal_erro = page.locator(".swal2-html-container")
+                if swal_erro.is_visible():
+                    msg = swal_erro.text_content().strip()
+                    if "inválida" in msg.lower() or "incorret" in msg.lower() or "expirada" in msg.lower():
+                        log_callback(f"[F2] Erro de Login (Alerta): {msg}", "ERRO")
+                        return None
+                
+                # 3. Verifica se solicitou 2FA
+                token_field = page.locator('input[name="token"]')
+                if token_field.is_visible():
+                    log_callback("[F2] Validação 2FA detectada. Aguardando 30s para intervenção manual...", "AVISO")
+                    try:
+                        page.wait_for_navigation(timeout=30000, wait_until="load")
+                        login_sucesso = True
+                        break
+                    except Error:
+                        log_callback("[F2] Timeout aguardando intervenção no 2FA.", "ERRO")
+                        return None
+                
+                # 4. Verifica se saiu da tela de login
+                if page.url != url_login_inicial and "login" not in page.url.lower():
+                    login_sucesso = True
+                    break
+                    
+                page.wait_for_timeout(1000)
+
+            if not login_sucesso:
+                log_callback("[F2] Erro: Timeout aguardando o login concluir. A tela permaneceu inalterada ou travou.", "ERRO")
+                return None
+
+        except Error as e_login:
+             log_callback(f"[F2] Falha ao executar login: {e_login}", "ERRO")
+             return None
 
         log_callback("[F2] Login (aparentemente) bem-sucedido.", "SUCESSO")
 

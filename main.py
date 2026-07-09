@@ -533,7 +533,9 @@ class AutomacaoUI:
             )
             
             if not self.page:
-                raise Exception("Falha no login (Fase 2).")
+                self.log("Falha no login (Fase 2). Verifique as credenciais e a conexão. A automação será interrompida.", "ERRO")
+                # A exceção não é mais necessária, pois o 'finally' cuidará da UI.
+                return
 
             self.log("Fase 2 (Login) concluída com sucesso.", "SUCESSO")
             
