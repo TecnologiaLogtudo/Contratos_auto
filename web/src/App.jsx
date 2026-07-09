@@ -34,7 +34,18 @@ export default function App() {
     window.location.pathname.replace(/\/+$/, '') === manualRoute ||
     window.location.pathname.includes('/manual/')
   )
-  const [config, setConfig] = useState(initialConfig)
+  const [config, setConfig] = useState(() => {
+    try {
+      const saved = localStorage.getItem('logtudo_config')
+      if (saved) return { ...initialConfig, ...JSON.parse(saved) }
+    } catch (e) {}
+    return initialConfig
+  })
+
+  useEffect(() => {
+    localStorage.setItem('logtudo_config', JSON.stringify(config))
+  }, [config])
+  
   const [file, setFile] = useState(null)
   const [jobId, setJobId] = useState(null)
   const [job, setJob] = useState(null)
@@ -671,7 +682,7 @@ export default function App() {
       ) : (
     <div className="app-shell">
       <aside className="sidebar">
-        <div className="brand"><div className="logo">LT</div><div><h1>LogTudo</h1><p>Automação de contratos v3.0</p></div></div>
+        <div className="brand"><div className="logo" style={{ overflow: 'hidden', padding: 0 }}><img src={withBasePath('/logtudo_icon.jpg')} alt="LogTudo" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /></div><div><h1>LogTudo</h1><p>Automação de contratos v3.0</p></div></div>
         {MENU_ITEMS.map((item) => (
           <button
             key={item}
