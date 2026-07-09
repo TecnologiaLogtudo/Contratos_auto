@@ -131,8 +131,10 @@ def perform_login(
                         log_callback("[F2] Timeout aguardando intervenção no 2FA.", "ERRO")
                         return None
                 
-                # 4. Verifica se saiu da tela de login
-                if page.url != url_login_inicial and "login" not in page.url.lower():
+                # 4. Verifica se saiu da tela de login inicial
+                if page.url != url_login_inicial:
+                    # Se a URL mudou (por exemplo, foi para um painel ou dashboard)
+                    # consideramos que o login concluiu a submissão e saiu da tela inicial
                     login_sucesso = True
                     break
                     
