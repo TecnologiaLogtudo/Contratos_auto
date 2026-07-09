@@ -30,6 +30,149 @@ def _alternativas_busca_cidade(cidade: str) -> list[str]:
     return alternativas
 
 
+def _sincronizar_destinatario_latam(page: Page, nro_cotacao: str, log_callback: Callable, atraso_etapas: float) -> bool:
+    """
+    Regra atual da LATAM: Destinatário é cópia do Remetente (Busca pelo CNPJ e seleciona ID exato)
+    """
+    destinatario_selector = 'select[name="dados_enderecoDestinatario_id"]'
+    remetente_selector = 'select[name="dados_enderecoRemetente_id"]'
+
+    try:
+        # 1. Espera o campo Remetente estar anexado/disponível
+        page.wait_for_selector(remetente_selector, state='attached', timeout=5000)
+        remetente_value = page.input_value(remetente_selector)
+
+        if not remetente_value:
+            log_callback(f"[F4] [Item {nro_cotacao}] ERRO: Remetente está vazio. Não é possível pesquisar o Destinatário.", "ERRO")
+            return False
+
+        # Tenta obter o texto do remetente para extrair o CNPJ
+        remetente_text = "N/A"
+        try:
+            remetente_text = page.locator(f'{remetente_selector} option[value="{remetente_value}"]').inner_text().strip()
+        except Exception:
+            try:
+                remetente_text = page.evaluate('() => { const select = document.querySelector(\'select[name="dados_enderecoRemetente_id"]\'); return select ? select.options[select.selectedIndex].text : ""; }').strip()
+            except Exception:
+                remetente_text = f"Valor {remetente_value}"
+
+        # Extrai o CNPJ desconsiderando sinais
+        # Padrão busca formato CNPJ ou sequência de 14 dígitos
+        cnpj_match = re.search(r'(\d{2}\.\d{3}\.\d{3}/\d{4}-\d{2})|(\d{14})', remetente_text)
+        if cnpj_match:
+            cnpj = re.sub(r'\D', '', cnpj_match.group(0))
+        else:
+            # Caso não encontre no padrão, tenta extrair todos os dígitos e pegar os primeiros 14
+            digits = re.sub(r'\D', '', remetente_text)
+            if len(digits) >= 14:
+                cnpj = digits[:14]
+            else:
+                log_callback(f"[F4] [Item {nro_cotacao}] ERRO: Não foi possível obter o CNPJ do Remetente ('{remetente_text}').", "ERRO")
+                return False
+
+        log_callback(f"[F4] [Item {nro_cotacao}] Etapa 1: Pesquisando Destinatário pelo CNPJ '{cnpj}' do Remetente...", "DEBUG")
+
+        # Preenche o CNPJ no campo de pesquisa do Destinatário
+        page.fill('input[name="pesquisa_enderecoDestinatario_id"]', cnpj)
+        time.sleep(atraso_etapas)
+
+        # Clica em Pesquisar
+        page.click('i[name="botaoPesquisa_enderecoDestinatario_id"]')
+
+        # Espera as opções do select carregarem
+        page.wait_for_selector(f'{destinatario_selector} option[value]:not([value=""])', state='attached', timeout=10000)
+        time.sleep(atraso_etapas)
+
+        # 2. Siga o fluxo normalmente: comparar com o valor de Remetente e selecionar
+        destinatario_value = page.input_value(destinatario_selector)
+
+        if destinatario_value != remetente_value:
+            log_callback(f"[F4] [Item {nro_cotacao}] AVISO: Destinatário diferente do Remetente. Tentando selecionar o valor exato do Remetente ('{remetente_text}')...", "AVISO")
+            try:
+                # Seleciona a opção com valor idêntico ao remetente
+                page.select_option(destinatario_selector, value=remetente_value)
+                time.sleep(atraso_etapas)
+
+                # Verifica se a seleção funcionou
+                if page.input_value(destinatario_selector) == remetente_value:
+                    log_callback(f"[F4] [Item {nro_cotacao}] Destinatário sincronizado com o Remetente com sucesso.", "INFO")
+                else:
+                    log_callback(f"[F4] [Item {nro_cotacao}] ERRO: Não foi possível selecionar o valor do Remetente no campo Destinatário (opção não disponível).", "ERRO")
+                    return False
+            except Exception as e_sel:
+                log_callback(f"[F4] [Item {nro_cotacao}] ERRO ao tentar sincronizar Destinatário: {e_sel}", "ERRO")
+                return False
+        else:
+            log_callback(f"[F4] [Item {nro_cotacao}] Destinatário e Remetente estão sincronizados.", "INFO")
+
+    except Exception as e:
+        log_callback(f"[F4] [Item {nro_cotacao}] ERRO na Etapa 1 (Destinatário/Remetente LATAM): {e}", "ERRO")
+        return False
+        
+    return True
+
+
+def _sincronizar_remetente_destinatario_lactalis(page: Page, nro_cotacao: str, log_callback: Callable, atraso_etapas: float) -> bool:
+    try:
+        log_callback(f"[F4] [Item {nro_cotacao}] Aplicando regra de destinatário LACTALIS...", "DEBUG")
+        
+        # 1. Remetente: Pesquisar 'Lactalis'
+        page.fill('input[name="pesquisa_enderecoRemetente_id"]', 'Lactalis')
+        time.sleep(atraso_etapas)
+        page.click('i[name="botaoPesquisa_enderecoRemetente_id"]')
+        
+        remetente_selector = 'select[name="dados_enderecoRemetente_id"]'
+        page.wait_for_selector(f'{remetente_selector} option[value]:not([value=""])', state='attached', timeout=10000)
+        time.sleep(atraso_etapas)
+        
+        # Selecionar '43.340.312/0006-61...'
+        options_remetente = page.locator(remetente_selector).locator("option").all()
+        remetente_value = None
+        for opt in options_remetente:
+            text = opt.inner_text().strip()
+            if "43.340.312/0006-61" in text:
+                remetente_value = opt.get_attribute("value")
+                break
+        
+        if remetente_value:
+            page.select_option(remetente_selector, value=remetente_value)
+            log_callback(f"[F4] [Item {nro_cotacao}] Remetente LACTALIS selecionado com sucesso.", "INFO")
+        else:
+            log_callback(f"[F4] [Item {nro_cotacao}] ERRO: Remetente LACTALIS não encontrado nas opções.", "ERRO")
+            return False
+            
+        time.sleep(atraso_etapas)
+
+        # 2. Destinatário: Pesquisar 'Logtudo'
+        page.fill('input[name="pesquisa_enderecoDestinatario_id"]', 'Logtudo')
+        time.sleep(atraso_etapas)
+        page.click('i[name="botaoPesquisa_enderecoDestinatario_id"]')
+        
+        destinatario_selector = 'select[name="dados_enderecoDestinatario_id"]'
+        page.wait_for_selector(f'{destinatario_selector} option[value]:not([value=""])', state='attached', timeout=10000)
+        time.sleep(atraso_etapas)
+        
+        options_destinatario = page.locator(destinatario_selector).locator("option").all()
+        destinatario_value = None
+        for opt in options_destinatario:
+            text = opt.inner_text().strip()
+            if "20.511.709/0001-69" in text:
+                destinatario_value = opt.get_attribute("value")
+                break
+                
+        if destinatario_value:
+            page.select_option(destinatario_selector, value=destinatario_value)
+            log_callback(f"[F4] [Item {nro_cotacao}] Destinatário LOGTUDO selecionado com sucesso.", "INFO")
+        else:
+            log_callback(f"[F4] [Item {nro_cotacao}] ERRO: Destinatário LOGTUDO não encontrado nas opções.", "ERRO")
+            return False
+
+        return True
+    except Exception as e:
+        log_callback(f"[F4] [Item {nro_cotacao}] ERRO na Etapa 1 (Remetente/Destinatário LACTALIS): {e}", "ERRO")
+        return False
+
+
 def preencher_frete(
     page: Page, 
     dados_linha: Dict[str, str], 
@@ -50,80 +193,16 @@ def preencher_frete(
 
         # ETAPA 1: Destinatário (buscar pelo CNPJ do Remetente e sincronizar)
         pause_event.wait()
+        
+        remetente_planilha = dados_linha.get("Remetente", "").upper()
 
-        destinatario_selector = 'select[name="dados_enderecoDestinatario_id"]'
-        remetente_selector = 'select[name="dados_enderecoRemetente_id"]'
+        if "LACTALIS" in remetente_planilha:
+            sucesso_etapa1 = _sincronizar_remetente_destinatario_lactalis(page, nro_cotacao, log_callback, atraso_etapas)
+        else:
+            # Fallback default (TAM)
+            sucesso_etapa1 = _sincronizar_destinatario_latam(page, nro_cotacao, log_callback, atraso_etapas)
 
-        try:
-            # 1. Espera o campo Remetente estar anexado/disponível
-            page.wait_for_selector(remetente_selector, state='attached', timeout=5000)
-            remetente_value = page.input_value(remetente_selector)
-
-            if not remetente_value:
-                log_callback(f"[F4] [Item {nro_cotacao}] ERRO: Remetente está vazio. Não é possível pesquisar o Destinatário.", "ERRO")
-                return False
-
-            # Tenta obter o texto do remetente para extrair o CNPJ
-            remetente_text = "N/A"
-            try:
-                remetente_text = page.locator(f'{remetente_selector} option[value="{remetente_value}"]').inner_text().strip()
-            except Exception:
-                try:
-                    remetente_text = page.evaluate('() => { const select = document.querySelector(\'select[name="dados_enderecoRemetente_id"]\'); return select ? select.options[select.selectedIndex].text : ""; }').strip()
-                except Exception:
-                    remetente_text = f"Valor {remetente_value}"
-
-            # Extrai o CNPJ desconsiderando sinais
-            # Padrão busca formato CNPJ ou sequência de 14 dígitos
-            cnpj_match = re.search(r'(\d{2}\.\d{3}\.\d{3}/\d{4}-\d{2})|(\d{14})', remetente_text)
-            if cnpj_match:
-                cnpj = re.sub(r'\D', '', cnpj_match.group(0))
-            else:
-                # Caso não encontre no padrão, tenta extrair todos os dígitos e pegar os primeiros 14
-                digits = re.sub(r'\D', '', remetente_text)
-                if len(digits) >= 14:
-                    cnpj = digits[:14]
-                else:
-                    log_callback(f"[F4] [Item {nro_cotacao}] ERRO: Não foi possível obter o CNPJ do Remetente ('{remetente_text}').", "ERRO")
-                    return False
-
-            log_callback(f"[F4] [Item {nro_cotacao}] Etapa 1: Pesquisando Destinatário pelo CNPJ '{cnpj}' do Remetente...", "DEBUG")
-
-            # Preenche o CNPJ no campo de pesquisa do Destinatário
-            page.fill('input[name="pesquisa_enderecoDestinatario_id"]', cnpj)
-            time.sleep(atraso_etapas)
-
-            # Clica em Pesquisar
-            page.click('i[name="botaoPesquisa_enderecoDestinatario_id"]')
-
-            # Espera as opções do select carregarem
-            page.wait_for_selector(f'{destinatario_selector} option[value]:not([value=""])', state='attached', timeout=10000)
-            time.sleep(atraso_etapas)
-
-            # 2. Siga o fluxo normalmente: comparar com o valor de Remetente e selecionar
-            destinatario_value = page.input_value(destinatario_selector)
-
-            if destinatario_value != remetente_value:
-                log_callback(f"[F4] [Item {nro_cotacao}] AVISO: Destinatário diferente do Remetente. Tentando selecionar o valor exato do Remetente ('{remetente_text}')...", "AVISO")
-                try:
-                    # Seleciona a opção com valor idêntico ao remetente
-                    page.select_option(destinatario_selector, value=remetente_value)
-                    time.sleep(atraso_etapas)
-
-                    # Verifica se a seleção funcionou
-                    if page.input_value(destinatario_selector) == remetente_value:
-                        log_callback(f"[F4] [Item {nro_cotacao}] Destinatário sincronizado com o Remetente com sucesso.", "INFO")
-                    else:
-                        log_callback(f"[F4] [Item {nro_cotacao}] ERRO: Não foi possível selecionar o valor do Remetente no campo Destinatário (opção não disponível).", "ERRO")
-                        return False
-                except Exception as e_sel:
-                    log_callback(f"[F4] [Item {nro_cotacao}] ERRO ao tentar sincronizar Destinatário: {e_sel}", "ERRO")
-                    return False
-            else:
-                log_callback(f"[F4] [Item {nro_cotacao}] Destinatário e Remetente estão sincronizados.", "INFO")
-
-        except Exception as e:
-            log_callback(f"[F4] [Item {nro_cotacao}] ERRO na Etapa 1 (Destinatário/Remetente): {e}", "ERRO")
+        if not sucesso_etapa1:
             return False
 
         # ETAPA 2: Cidade (da planilha)
