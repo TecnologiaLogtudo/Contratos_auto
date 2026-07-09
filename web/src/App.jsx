@@ -499,6 +499,7 @@ export default function App() {
               <span>ID: <strong>{logSessionDetail?.id || '-'}</strong></span>
               <span>Usuário: <strong>{logSessionDetail?.user || '-'}</strong></span>
               <span>IP: <strong>{logSessionDetail?.ip || '-'}</strong></span>
+              <span>Data/Hora: <strong>{logSessionDetail?.created_at ? new Date(logSessionDetail.created_at).toLocaleString('pt-BR') : '-'}</strong></span>
             </div>
 
             <div className={logsTab === 'artefatos' ? "" : "logs-box"} ref={logsRef}>
