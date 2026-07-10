@@ -101,44 +101,53 @@ def perform_login(
             botao_submit.click()
             
             login_sucesso = False
-            url_login_inicial = page.url
             
-            for _ in range(60): # Aguarda até 60 segundos
-                # 1. Verifica se apareceu erro de texto na interface
-                error_p = page.locator("p.error-message")
-                if error_p.is_visible():
-                    msg = error_p.text_content().strip()
-                    log_callback(f"[F2] Erro de Login (UI): {msg}", "ERRO")
-                    return None
-                    
-                # 2. Verifica erro no SweetAlert
-                swal_erro = page.locator(".swal2-html-container")
-                if swal_erro.is_visible():
-                    msg = swal_erro.text_content().strip()
-                    if "inválida" in msg.lower() or "incorret" in msg.lower() or "expirada" in msg.lower():
-                        log_callback(f"[F2] Erro de Login (Alerta): {msg}", "ERRO")
+            # Polling rápido (a cada 500ms) por até 15 segundos (30 iterações)
+            for _ in range(30):
+                try:
+                    # 1. Verifica se apareceu erro de texto na interface
+                    error_p = page.locator("p.error-message")
+                    if error_p.is_visible():
+                        msg = error_p.text_content().strip()
+                        log_callback(f"[F2] Erro de Login (UI): {msg}", "ERRO")
                         return None
-                
-                # 3. Verifica se solicitou 2FA
-                token_field = page.locator('input[name="token"]')
-                if token_field.is_visible():
-                    log_callback("[F2] Validação 2FA detectada. Aguardando 30s para intervenção manual...", "AVISO")
-                    try:
-                        page.wait_for_navigation(timeout=30000, wait_until="load")
+                        
+                    # 2. Verifica erro no SweetAlert
+                    swal_erro = page.locator(".swal2-html-container")
+                    if swal_erro.is_visible():
+                        msg = swal_erro.text_content().strip()
+                        if "inválida" in msg.lower() or "incorret" in msg.lower() or "expirada" in msg.lower():
+                            log_callback(f"[F2] Erro de Login (Alerta): {msg}", "ERRO")
+                            return None
+                    
+                    # 3. Verifica se solicitou 2FA
+                    token_field = page.locator('input[name="token"]')
+                    if token_field.is_visible():
+                        log_callback("[F2] Validação 2FA detectada. Aguardando 30s para intervenção manual...", "AVISO")
+                        try:
+                            page.wait_for_navigation(timeout=30000, wait_until="load")
+                            login_sucesso = True
+                            break
+                        except Error:
+                            log_callback("[F2] Timeout aguardando intervenção no 2FA.", "ERRO")
+                            return None
+                    
+                    # 4. Verifica se o botão de submit sumiu (indício de que saiu da tela de login)
+                    if not page.locator("#botaoSubmit").is_visible():
+                        # Espera um breve instante para garantir que não foi apenas um reload de tela de erro
+                        page.wait_for_timeout(1000)
+                        if page.locator("p.error-message").is_visible() or page.locator(".swal2-html-container").is_visible():
+                            continue # Era um erro que carregou
                         login_sucesso = True
                         break
-                    except Error:
-                        log_callback("[F2] Timeout aguardando intervenção no 2FA.", "ERRO")
-                        return None
-                
-                # 4. Verifica se saiu da tela de login inicial
-                if page.url != url_login_inicial:
-                    # Se a URL mudou (por exemplo, foi para um painel ou dashboard)
-                    # consideramos que o login concluiu a submissão e saiu da tela inicial
+                        
+                except Error:
+                    # Se ocorrer um erro do Playwright aqui (ex: "Execution context was destroyed"), 
+                    # significa que a página iniciou uma navegação com sucesso!
                     login_sucesso = True
                     break
                     
-                page.wait_for_timeout(1000)
+                page.wait_for_timeout(500)
 
             if not login_sucesso:
                 log_callback("[F2] Erro: Timeout aguardando o login concluir. A tela permaneceu inalterada ou travou.", "ERRO")
