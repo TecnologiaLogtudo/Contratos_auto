@@ -111,6 +111,22 @@ def _sincronizar_destinatario_latam(page: Page, nro_cotacao: str, log_callback: 
         
     return True
 
+def _formatar_moeda_lactalis(frete_negociado, frete_pagar) -> str:
+    def parse_float(v):
+        if v is None: return 0.0
+        if isinstance(v, (int, float)): return float(v)
+        v_str = str(v).replace("R$", "").replace(".", "").replace(",", ".").strip()
+        try:
+            return float(v_str)
+        except ValueError:
+            return 0.0
+            
+    fn_val = parse_float(frete_negociado)
+    fp_val = parse_float(frete_pagar)
+    
+    val_escolhido = fn_val if fn_val > 0 else fp_val
+    return f"{val_escolhido:.2f}".replace(".", ",")
+
 
 def _sincronizar_remetente_destinatario_lactalis(page: Page, nro_cotacao: str, log_callback: Callable, atraso_etapas: float) -> bool:
     try:
@@ -379,6 +395,18 @@ def preencher_frete(
         time.sleep(atraso_etapas)
         page.fill('input[name="dados_totalPrestacao"]', "0,00")
         time.sleep(atraso_etapas)
+
+        # ETAPA 8.5: Regra Lactalis - Preencher Frete Terceiros
+        if "LACTALIS" in remetente_planilha:
+            pause_event.wait()
+            log_callback(f"[F4] [Item {nro_cotacao}] Etapa 8.5: Preenchendo Frete Terceiros para Lactalis...", "DEBUG")
+            frete_negociado = dados_linha.get("Frete negociado")
+            frete_pagar = dados_linha.get("Frete a pagar")
+            
+            valor_moeda = _formatar_moeda_lactalis(frete_negociado, frete_pagar)
+            log_callback(f"[F4] [Item {nro_cotacao}] Valor selecionado para frete terceiros: R$ {valor_moeda}", "DEBUG")
+            page.fill('input[name="dados_outrosValores[freteterceiros]"]', valor_moeda)
+            time.sleep(atraso_etapas)
 
         # ETAPA 9: Preencher campo de observação
         pause_event.wait()

@@ -6,6 +6,35 @@ from datetime import datetime
 import time
 from .fase3_preenchimento import registrar_erro_em_planilha, registrar_sucesso_em_planilha
 
+def _calcular_data_programada_lactalis(validade_raw: str, nro_cotacao: str, log_callback: Callable[[str, str], None]) -> str | None:
+    """Calcula a data programada para a Lactalis baseada na data de validade."""
+    if validade_raw and str(validade_raw).strip():
+        try:
+            if isinstance(validade_raw, datetime):
+                val_date = validade_raw
+            else:
+                import re
+                match = re.search(r'(\d{2})[-/](\d{2})[-/](\d{4})', str(validade_raw))
+                if match:
+                    val_date = datetime(int(match.group(3)), int(match.group(2)), int(match.group(1)))
+                else:
+                    raise ValueError("Formato desconhecido")
+                    
+            novo_mes = val_date.month + 1
+            novo_ano = val_date.year
+            if novo_mes > 12:
+                novo_mes = 1
+                novo_ano += 1
+                
+            novo_dia = 5 if val_date.day <= 15 else 20
+            data_final = f"{novo_dia:02d}/{novo_mes:02d}/{novo_ano}"
+            log_callback(f"[F5] [Item {nro_cotacao}] Regra Lactalis aplicada: Validade {val_date.strftime('%d/%m/%Y')} -> Programada {data_final}.", "DEBUG")
+            return data_final
+        except Exception as e:
+            log_callback(f"[F5] [Item {nro_cotacao}] AVISO: Falha ao calcular Lactalis pela Validade '{validade_raw}'. Erro: {e}", "AVISO")
+            return None
+    return None
+
 def preencher_contrato_frete(
     page: Page,
     dados_linha: Dict[str, str],
@@ -23,6 +52,9 @@ def preencher_contrato_frete(
     try:
         nro_cotacao = dados_linha.get("Nro cotação", "N/A")
         log_callback(f"[F5] [Item {nro_cotacao}] --- INÍCIO: CONTRATO DE FRETE ---", "FASE")
+        
+        remetente_str = str(dados_linha.get("Remetente", "")).lower()
+        is_lactalis = "lactalis" in remetente_str
 
         # ETAPA 1: Preencher Data Final de Viagem
         pause_event.wait()
@@ -30,7 +62,15 @@ def preencher_contrato_frete(
         data_fim_viagem_selector = 'input[name="dados_dtFimViagem"]'
         data_pagamento_raw = dados_linha.get("Data pagamento", "DATA NÃO ENCONTRADA")
 
-        if data_pagamento_raw and data_pagamento_raw != "DATA NÃO ENCONTRADA":
+        if is_lactalis:
+            data_emissao = page.input_value('input[name="dados_dtEmissaoRF"]')
+            log_callback(f"[F5] [Item {nro_cotacao}] Regra Lactalis: Usando Data de Emissão '{data_emissao}' para 'Fim viagem'.", "DEBUG")
+            data_pagamento_com_hora = data_emissao
+            
+            page.click(data_fim_viagem_selector)
+            page.fill(data_fim_viagem_selector, data_pagamento_com_hora)
+            log_callback(f"[F5] [Item {nro_cotacao}] Campo 'Fim viagem' preenchido com '{data_pagamento_com_hora}'.", "DEBUG")
+        elif data_pagamento_raw and data_pagamento_raw != "DATA NÃO ENCONTRADA":
             # Garante que a data esteja no formato string dd/mm/aaaa
             if isinstance(data_pagamento_raw, datetime):
                 data_pagamento = data_pagamento_raw.strftime('%d/%m/%Y')
@@ -60,14 +100,15 @@ def preencher_contrato_frete(
         perfil_apropriacao_select_selector = 'select[name="dados_perfisApropriacao_id"]'
 
         try:
-            if cidade_planilha in ["N/A", "CIDADE NÃO ENCONTRADA"]:
+            termo_busca_perfil = "lactalis BA" if is_lactalis else cidade_planilha
+            if not is_lactalis and cidade_planilha in ["N/A", "CIDADE NÃO ENCONTRADA"]:
                 motivo_erro = "Cidade não disponível na planilha para preenchimento do Perfil Apropriação."
                 log_callback(f"[F5] [Item {nro_cotacao}] ERRO: {motivo_erro}", "ERRO")
                 registrar_erro_em_planilha(dados_linha, motivo_erro, log_callback, output_filepath)
                 return False
 
             # Preenche o campo de pesquisa e clica no botão
-            page.fill('input[name="pesquisa_dados_perfisApropriacao_id"]', cidade_planilha)
+            page.fill('input[name="pesquisa_dados_perfisApropriacao_id"]', termo_busca_perfil)
             time.sleep(atraso_etapas)
             page.click('i[name="botaoPesquisa_dados_perfisApropriacao_id"]')
             page.wait_for_timeout(500) # Aguarda a população do select
@@ -110,31 +151,35 @@ def preencher_contrato_frete(
 
         # ETAPA 3: Preencher Km
         pause_event.wait()
-        log_callback(f"[F5] [Item {nro_cotacao}] Etapa 3: Preenchendo Km com '{dados_km}'...", "DEBUG")
-        page.fill('input[name="dados_kms"]', dados_km)
+        valor_km = "1" if is_lactalis else dados_km
+        log_callback(f"[F5] [Item {nro_cotacao}] Etapa 3: Preenchendo Km com '{valor_km}'...", "DEBUG")
+        page.fill('input[name="dados_kms"]', valor_km)
 
         time.sleep(atraso_etapas)
 
         # ETAPA 4: Pesquisar e Selecionar NCM
         pause_event.wait()
-        log_callback(f"[F5] [Item {nro_cotacao}] Etapa 4: Pesquisando e selecionando NCM 'vinho'...", "DEBUG")
+        pesquisa_ncm = "0403" if is_lactalis else "vinho"
+        valor_ncm = "0403." if is_lactalis else "2204."
         
-        # Preenche o campo de pesquisa com 'vinho'
-        page.fill('input[name="pesquisa_dados_ncm"]', "vinho")
+        log_callback(f"[F5] [Item {nro_cotacao}] Etapa 4: Pesquisando e selecionando NCM '{pesquisa_ncm}'...", "DEBUG")
+        
+        # Preenche o campo de pesquisa
+        page.fill('input[name="pesquisa_dados_ncm"]', pesquisa_ncm)
         
         # Clica no botão de pesquisa
         page.click('i[name="botaoPesquisa_dados_ncm"]')
         
         # Aguarda os resultados da pesquisa aparecerem no select
         ncm_selector = 'select[name="dados_ncm"]'
-        option_to_wait_for = f'{ncm_selector} option[value="2204."]'
+        option_to_wait_for = f'{ncm_selector} option[value="{valor_ncm}"]'
         log_callback(f"[F5] [Item {nro_cotacao}] Aguardando resultados da pesquisa de NCM...", "DEBUG")
         # Alteração: Esperar o elemento estar 'attached' (presente no DOM), não 'visible'
         page.wait_for_selector(option_to_wait_for, state="attached", timeout=10000)
         
-        # Seleciona a opção desejada que começa com 2204
-        log_callback(f"[F5] [Item {nro_cotacao}] Selecionando NCM '2204.'...", "DEBUG")
-        page.select_option(ncm_selector, value="2204.")
+        # Seleciona a opção desejada
+        log_callback(f"[F5] [Item {nro_cotacao}] Selecionando NCM '{valor_ncm}'...", "DEBUG")
+        page.select_option(ncm_selector, value=valor_ncm)
 
         time.sleep(atraso_etapas)
 
@@ -208,8 +253,19 @@ def preencher_contrato_frete(
 
         # ETAPA 6: Preencher Observação
         pause_event.wait()
-        log_callback(f"[F5] [Item {nro_cotacao}] Etapa 6: Preenchendo Observação 'Contrato Diária'...", "DEBUG")
-        page.fill('textarea[name="dados_obs"]', "Contrato Diária")
+        
+        if is_lactalis:
+            data_validade_raw = dados_linha.get("Validade", "")
+            if isinstance(data_validade_raw, datetime):
+                data_str = data_validade_raw.strftime('%d/%m/%Y')
+            else:
+                data_str = str(data_validade_raw)
+            obs_text = f"DIARIA PARADA {data_str}"
+        else:
+            obs_text = "Contrato Diária"
+            
+        log_callback(f"[F5] [Item {nro_cotacao}] Etapa 6: Preenchendo Observação '{obs_text}'...", "DEBUG")
+        page.fill('textarea[name="dados_obs"]', obs_text)
 
         time.sleep(atraso_etapas)
 
@@ -311,8 +367,6 @@ def preencher_contrato_frete(
 
         # ETAPA 12: Preencher Data Programada
         pause_event.wait()
-        remetente_str = str(dados_linha.get("Remetente", "")).lower()
-        is_lactalis = "lactalis" in remetente_str
         
         data_pagamento_raw = dados_linha.get("Data pagamento", "DATA NÃO ENCONTRADA")
         validade_raw = dados_linha.get("Validade")
@@ -323,40 +377,9 @@ def preencher_contrato_frete(
         data_programada_final = None
         
         if is_lactalis:
-            if validade_raw and str(validade_raw).strip():
-                try:
-                    # Tenta converter a validade para extrair o dia, mês e ano
-                    if isinstance(validade_raw, datetime):
-                        val_date = validade_raw
-                    else:
-                        # Extrai a data do formato string (ex: 26/06/2026)
-                        from datetime import datetime as dt
-                        import re
-                        match = re.search(r'(\d{2})[-/](\d{2})[-/](\d{4})', str(validade_raw))
-                        if match:
-                            val_date = dt(int(match.group(3)), int(match.group(2)), int(match.group(1)))
-                        else:
-                            raise ValueError("Formato desconhecido")
-                            
-                    # Aplica a regra da Lactalis:
-                    # 01 a 15: Dia 05 do mês seguinte
-                    # 16 a 31: Dia 20 do mês seguinte
-                    novo_mes = val_date.month + 1
-                    novo_ano = val_date.year
-                    if novo_mes > 12:
-                        novo_mes = 1
-                        novo_ano += 1
-                        
-                    novo_dia = 5 if val_date.day <= 15 else 20
-                    data_programada_final = f"{novo_dia:02d}/{novo_mes:02d}/{novo_ano}"
-                    log_callback(f"[F5] [Item {nro_cotacao}] Regra Lactalis aplicada: Validade {val_date.strftime('%d/%m/%Y')} -> Programada {data_programada_final}.", "DEBUG")
-                except Exception as e:
-                    motivo_erro = f"Não foi possível calcular a data da Lactalis usando a Validade '{validade_raw}'. Erro: {e}"
-                    log_callback(f"[F5] [Item {nro_cotacao}] ERRO: {motivo_erro}", "ERRO")
-                    registrar_erro_em_planilha(dados_linha, motivo_erro, log_callback, output_filepath)
-                    return False
-            else:
-                motivo_erro = "Coluna 'Validade' vazia ou não encontrada, necessária para Lactalis."
+            data_programada_final = _calcular_data_programada_lactalis(validade_raw, nro_cotacao, log_callback)
+            if not data_programada_final:
+                motivo_erro = f"Não foi possível calcular a data da Lactalis ou coluna 'Validade' vazia (valor atual: '{validade_raw}')."
                 log_callback(f"[F5] [Item {nro_cotacao}] ERRO: {motivo_erro}", "ERRO")
                 registrar_erro_em_planilha(dados_linha, motivo_erro, log_callback, output_filepath)
                 return False

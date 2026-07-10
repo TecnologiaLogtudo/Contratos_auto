@@ -64,7 +64,7 @@ def processar_planilha(filepath: str, log_callback: Callable) -> str | None:
         ws_out = wb_out.active
         ws_out.title = "Dados Processados"
 
-        headers = ["Nro cotação", "Categoria veículo", "Cidade", "UF", "Nome", "Placa", "Data pagamento", "Viagem extra", "Remetente", "Validade", "Status"]
+        headers = ["Nro cotação", "Categoria veículo", "Cidade", "UF", "Nome", "Placa", "Data pagamento", "Viagem extra", "Remetente", "Validade", "Frete a pagar", "Frete negociado", "Status"]
         ws_out.append(headers)
 
         # Aba para contratos não realizados
@@ -131,6 +131,8 @@ def _ler_com_openpyxl(filepath: str, ws_out: openpyxl.worksheet.worksheet.Worksh
                 nome_placa_raw = row[22]
                 remetente_raw = row[REMETENTE_COLUMN_INDEX] if REMETENTE_COLUMN_INDEX < len(row) else None
                 validade_raw = row[6] if len(row) > 6 else None
+                frete_pagar_raw = row[16] if len(row) > 16 else None
+                frete_negociado_raw = row[18] if len(row) > 18 else None
                 
                 cidade, uf = _processar_cidade_uf(cidade_uf_raw, row_idx, log_callback)
                 nome, placa, data_pagamento, viagem_extra = _processar_nome_placa(nome_placa_raw, row_idx, log_callback)
@@ -152,7 +154,7 @@ def _ler_com_openpyxl(filepath: str, ws_out: openpyxl.worksheet.worksheet.Worksh
                     ws_nao_realizado.append(linha_base + [observacao, "Falha na Validação"])
                     log_callback(f"[F1] Linha {row_idx}: Movida para 'Contrato não realizado'. Motivo: {observacao}", "AVISO")
                 else:
-                    ws_out.append(linha_base + [viagem_extra, remetente, validade_raw, "Pendente"])
+                    ws_out.append(linha_base + [viagem_extra, remetente, validade_raw, frete_pagar_raw, frete_negociado_raw, "Pendente"])
 
             except IndexError:
                 log_callback(f"[F1] Erro ao ler colunas na linha {row_idx}. A linha pode ser mais curta que o esperado.", "AVISO")
@@ -205,6 +207,8 @@ def _ler_com_xlrd(filepath: str, ws_out: openpyxl.worksheet.worksheet.Worksheet,
                 nome_placa_raw = _get_merged_cell_value(sheet, row_idx, 22)
                 remetente_raw = _get_merged_cell_value(sheet, row_idx, REMETENTE_COLUMN_INDEX) if REMETENTE_COLUMN_INDEX < sheet.ncols else None
                 validade_raw = _get_merged_cell_value(sheet, row_idx, 6) if sheet.ncols > 6 else None
+                frete_pagar_raw = _get_merged_cell_value(sheet, row_idx, 16) if sheet.ncols > 16 else None
+                frete_negociado_raw = _get_merged_cell_value(sheet, row_idx, 18) if sheet.ncols > 18 else None
                 
                 cidade, uf = _processar_cidade_uf(cidade_uf_raw, row_idx + 1, log_callback)
                 nome, placa, data_pagamento, viagem_extra = _processar_nome_placa(nome_placa_raw, row_idx + 1, log_callback)
@@ -226,7 +230,7 @@ def _ler_com_xlrd(filepath: str, ws_out: openpyxl.worksheet.worksheet.Worksheet,
                     ws_nao_realizado.append(linha_base + [observacao, "Falha na Validação"])
                     log_callback(f"[F1] Linha {row_idx + 1}: Movida para 'Contrato não realizado'. Motivo: {observacao}", "AVISO")
                 else:
-                    ws_out.append(linha_base + [viagem_extra, remetente, validade_raw, "Pendente"])
+                    ws_out.append(linha_base + [viagem_extra, remetente, validade_raw, frete_pagar_raw, frete_negociado_raw, "Pendente"])
 
             except IndexError:
                 log_callback(f"[F1] Erro ao ler colunas na linha {row_idx + 1}. A linha pode ser mais curta que o esperado.", "AVISO")
