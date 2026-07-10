@@ -311,24 +311,71 @@ def preencher_contrato_frete(
 
         # ETAPA 12: Preencher Data Programada
         pause_event.wait()
+        remetente_str = str(dados_linha.get("Remetente", "")).lower()
+        is_lactalis = "lactalis" in remetente_str
+        
         data_pagamento_raw = dados_linha.get("Data pagamento", "DATA NÃO ENCONTRADA")
+        validade_raw = dados_linha.get("Validade")
+        
         log_callback(f"[F5] [Item {nro_cotacao}] Etapa 12: Verificando e preenchendo Data Programada...", "DEBUG")
 
-        if data_pagamento_raw and data_pagamento_raw != "DATA NÃO ENCONTRADA":
-            # Garante que a data esteja no formato string dd/mm/aaaa
-            if isinstance(data_pagamento_raw, datetime):
-                data_pagamento = data_pagamento_raw.strftime('%d/%m/%Y')
+        # Define a data programada baseada no Remetente
+        data_programada_final = None
+        
+        if is_lactalis:
+            if validade_raw and str(validade_raw).strip():
+                try:
+                    # Tenta converter a validade para extrair o dia, mês e ano
+                    if isinstance(validade_raw, datetime):
+                        val_date = validade_raw
+                    else:
+                        # Extrai a data do formato string (ex: 26/06/2026)
+                        from datetime import datetime as dt
+                        import re
+                        match = re.search(r'(\d{2})[-/](\d{2})[-/](\d{4})', str(validade_raw))
+                        if match:
+                            val_date = dt(int(match.group(3)), int(match.group(2)), int(match.group(1)))
+                        else:
+                            raise ValueError("Formato desconhecido")
+                            
+                    # Aplica a regra da Lactalis:
+                    # 01 a 15: Dia 05 do mês seguinte
+                    # 16 a 31: Dia 20 do mês seguinte
+                    novo_mes = val_date.month + 1
+                    novo_ano = val_date.year
+                    if novo_mes > 12:
+                        novo_mes = 1
+                        novo_ano += 1
+                        
+                    novo_dia = 5 if val_date.day <= 15 else 20
+                    data_programada_final = f"{novo_dia:02d}/{novo_mes:02d}/{novo_ano}"
+                    log_callback(f"[F5] [Item {nro_cotacao}] Regra Lactalis aplicada: Validade {val_date.strftime('%d/%m/%Y')} -> Programada {data_programada_final}.", "DEBUG")
+                except Exception as e:
+                    motivo_erro = f"Não foi possível calcular a data da Lactalis usando a Validade '{validade_raw}'. Erro: {e}"
+                    log_callback(f"[F5] [Item {nro_cotacao}] ERRO: {motivo_erro}", "ERRO")
+                    registrar_erro_em_planilha(dados_linha, motivo_erro, log_callback, output_filepath)
+                    return False
             else:
-                data_pagamento = str(data_pagamento_raw)
-
-            log_callback(f"[F5] [Item {nro_cotacao}] Preenchendo Data Programada com '{data_pagamento}'.", "DEBUG")
-
-            page.fill('input[name="dados_dataSaldoRepom"]', data_pagamento)
+                motivo_erro = "Coluna 'Validade' vazia ou não encontrada, necessária para Lactalis."
+                log_callback(f"[F5] [Item {nro_cotacao}] ERRO: {motivo_erro}", "ERRO")
+                registrar_erro_em_planilha(dados_linha, motivo_erro, log_callback, output_filepath)
+                return False
         else:
-            motivo_erro = "Data de pagamento não encontrada na planilha."
-            log_callback(f"[F5] [Item {nro_cotacao}] ERRO: {motivo_erro} Cancelando item.", "ERRO")
-            registrar_erro_em_planilha(dados_linha, motivo_erro, log_callback, output_filepath)
-            return False # Sinaliza falha para pular para o próximo item
+            # Regra Padrão (LATAM e outros): Usa Data de Pagamento
+            if data_pagamento_raw and data_pagamento_raw != "DATA NÃO ENCONTRADA":
+                if isinstance(data_pagamento_raw, datetime):
+                    data_programada_final = data_pagamento_raw.strftime('%d/%m/%Y')
+                else:
+                    data_programada_final = str(data_pagamento_raw)
+            else:
+                motivo_erro = "Data de pagamento não encontrada na planilha."
+                log_callback(f"[F5] [Item {nro_cotacao}] ERRO: {motivo_erro} Cancelando item.", "ERRO")
+                registrar_erro_em_planilha(dados_linha, motivo_erro, log_callback, output_filepath)
+                return False # Sinaliza falha para pular para o próximo item
+
+        if data_programada_final:
+            log_callback(f"[F5] [Item {nro_cotacao}] Preenchendo Data Programada com '{data_programada_final}'.", "DEBUG")
+            page.fill('input[name="dados_dataSaldoRepom"]', data_programada_final)
 
         time.sleep(atraso_etapas)
 
