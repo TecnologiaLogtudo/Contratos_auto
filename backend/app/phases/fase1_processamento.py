@@ -137,6 +137,7 @@ def _ler_com_openpyxl(filepath: str, ws_out: openpyxl.worksheet.worksheet.Worksh
                 cidade, uf = _processar_cidade_uf(cidade_uf_raw, row_idx, log_callback)
                 nome, placa, data_pagamento, viagem_extra = _processar_nome_placa(nome_placa_raw, row_idx, log_callback)
                 remetente = _processar_remetente(remetente_raw)
+                is_lactalis = "lactalis" in remetente.lower()
 
                 # Validação dos dados
                 erros = []
@@ -144,8 +145,10 @@ def _ler_com_openpyxl(filepath: str, ws_out: openpyxl.worksheet.worksheet.Worksh
                     erros.append("Nome")
                 if placa == "PLACA NÃO ENCONTRADA":
                     erros.append("Placa")
-                if data_pagamento == "DATA NÃO ENCONTRADA":
+                if data_pagamento == "DATA NÃO ENCONTRADA" and not is_lactalis:
                     erros.append("Data pagamento")
+                if is_lactalis and (not validade_raw or str(validade_raw).strip() == ""):
+                    erros.append("Validade")
 
                 linha_base = [nro_cotacao, categoria, cidade, uf, nome, placa, data_pagamento]
 
@@ -213,6 +216,7 @@ def _ler_com_xlrd(filepath: str, ws_out: openpyxl.worksheet.worksheet.Worksheet,
                 cidade, uf = _processar_cidade_uf(cidade_uf_raw, row_idx + 1, log_callback)
                 nome, placa, data_pagamento, viagem_extra = _processar_nome_placa(nome_placa_raw, row_idx + 1, log_callback)
                 remetente = _processar_remetente(remetente_raw)
+                is_lactalis = "lactalis" in remetente.lower()
 
                 # Validação dos dados
                 erros = []
@@ -220,8 +224,10 @@ def _ler_com_xlrd(filepath: str, ws_out: openpyxl.worksheet.worksheet.Worksheet,
                     erros.append("Nome")
                 if placa == "PLACA NÃO ENCONTRADA":
                     erros.append("Placa")
-                if data_pagamento == "DATA NÃO ENCONTRADA":
+                if data_pagamento == "DATA NÃO ENCONTRADA" and not is_lactalis:
                     erros.append("Data pagamento")
+                if is_lactalis and (not validade_raw or str(validade_raw).strip() == ""):
+                    erros.append("Validade")
 
                 linha_base = [nro_cotacao, categoria, cidade, uf, nome, placa, data_pagamento]
 
