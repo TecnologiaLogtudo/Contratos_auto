@@ -186,9 +186,16 @@ def preencher_formulario(
             target_option_prefix = f"{nro_cotacao} /"
             correct_option_value = None
             
+            remetente_str = str(dados_linha.get("Remetente", "")).lower()
+            is_lactalis = "lactalis" in remetente_str
+            
             for opt in options:
                 option_text = opt.inner_text()
-                if option_text.strip().startswith(target_option_prefix):
+                matches = option_text.strip().startswith(target_option_prefix)
+                if is_lactalis:
+                    matches = matches and "lactalis" in option_text.lower()
+                
+                if matches:
                     correct_option_value = opt.get_attribute("value")
                     log_callback(f"[F3] [Item {nro_cotacao_item}] Opção correspondente encontrada: '{option_text.strip()}'", "DEBUG")
                     break
@@ -199,9 +206,10 @@ def preencher_formulario(
             else:
                 # Erro: Cotação existe, mas não no formato esperado
                 available_options = [opt.inner_text().strip() for opt in options]
-                log_callback(f"[F3] [Item {nro_cotacao_item}] ERRO: Nenhuma opção de cotação correspondente ao formato '{target_option_prefix}...' foi encontrada.", "ERRO")
+                formato_esperado = f"'{target_option_prefix}' contendo 'Lactalis'" if is_lactalis else f"'{target_option_prefix}'"
+                log_callback(f"[F3] [Item {nro_cotacao_item}] ERRO: Nenhuma opção de cotação correspondente ao formato {formato_esperado} foi encontrada.", "ERRO")
                 log_callback(f"[F3] [Item {nro_cotacao_item}] Opções disponíveis: {available_options}", "DEBUG")
-                registrar_erro_em_planilha(dados_linha, "Cotação não encontrada no formato esperado.", log_callback, output_filepath)
+                registrar_erro_em_planilha(dados_linha, f"Cotação não encontrada no formato esperado ({formato_esperado}).", log_callback, output_filepath)
                 return False
 
         except Error as e:
