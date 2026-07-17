@@ -213,8 +213,11 @@ def preencher_formulario(
 
         # ETAPA 6: Substituir valor em "dados_complementoPedido"
         pause_event.wait()
-        log_callback(f"[F3] [Item {nro_cotacao_item}] Etapa 6: Preenchendo Complemento do Pedido...", "DEBUG")
-        page.fill('input[name="dados_complementoPedido"]', str(nro_cotacao_item), force=True)
+        remetente_str = str(dados_linha.get("Remetente", "")).lower()
+        is_lactalis = "lactalis" in remetente_str
+        valor_pedido = "DIARIA PARADO" if is_lactalis else str(nro_cotacao_item)
+        log_callback(f"[F3] [Item {nro_cotacao_item}] Etapa 6: Preenchendo Complemento do Pedido com '{valor_pedido}'...", "DEBUG")
+        page.fill('input[name="dados_complementoPedido"]', valor_pedido, force=True)
         time.sleep(atraso_etapas)
 
         # ETAPA 7: Clicar em "Avançar >>"
