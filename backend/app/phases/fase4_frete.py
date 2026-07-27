@@ -374,10 +374,15 @@ def preencher_frete(
         page.select_option('select[name="dados_freteMinimo_tipoCarga"]', value="GER")
         time.sleep(atraso_etapas)
 
-        # ETAPA 7: Selecionar "Não realiza cálculos"
+        # ETAPA 7: Selecionar Composição do Frete
         pause_event.wait()
         log_callback(f"[F4] [Item {nro_cotacao}] Etapa 7: Selecionando Composição do Frete...", "DEBUG")
-        page.select_option('select[name="dados_regraFrete_id"]', value="40")
+        if "LACTALIS" in remetente_planilha:
+            log_callback(f"[F4] [Item {nro_cotacao}] Remetente Lactalis detectado. Selecionando Cotação Varejo (120)...", "DEBUG")
+            page.select_option('select[name="dados_regraFrete_id"]', value="120")
+        else:
+            log_callback(f"[F4] [Item {nro_cotacao}] Selecionando Não realiza cálculos (40)...", "DEBUG")
+            page.select_option('select[name="dados_regraFrete_id"]', value="40")
         time.sleep(atraso_etapas)
 
         # ETAPA 8: Apagar valores
