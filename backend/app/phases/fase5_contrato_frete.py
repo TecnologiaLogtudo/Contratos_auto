@@ -55,6 +55,8 @@ def preencher_contrato_frete(
         
         remetente_str = str(dados_linha.get("Remetente", "")).lower()
         is_lactalis = "lactalis" in remetente_str
+        is_dpa = "dpa" in remetente_str or "dairy partners" in remetente_str
+        is_lactalis_or_dpa = is_lactalis or is_dpa
 
         # ETAPA 1: Preencher Data Final de Viagem
         pause_event.wait()
@@ -62,7 +64,7 @@ def preencher_contrato_frete(
         data_fim_viagem_selector = 'input[name="dados_dtFimViagem"]'
         data_pagamento_raw = dados_linha.get("Data pagamento", "DATA NÃO ENCONTRADA")
 
-        if is_lactalis:
+        if is_lactalis_or_dpa:
             data_emissao = page.input_value('input[name="dados_dtEmissaoRF"]')
             log_callback(f"[F5] [Item {nro_cotacao}] Regra Lactalis: Usando Data de Emissão '{data_emissao}' para 'Fim viagem'.", "DEBUG")
             data_pagamento_com_hora = data_emissao
@@ -100,8 +102,14 @@ def preencher_contrato_frete(
         perfil_apropriacao_select_selector = 'select[name="dados_perfisApropriacao_id"]'
 
         try:
-            termo_busca_perfil = "lactalis BA" if is_lactalis else cidade_planilha
-            if not is_lactalis and cidade_planilha in ["N/A", "CIDADE NÃO ENCONTRADA"]:
+            if is_dpa:
+                termo_busca_perfil = "dpa BA"
+            elif is_lactalis:
+                termo_busca_perfil = "lactalis BA"
+            else:
+                termo_busca_perfil = cidade_planilha
+                
+            if not is_lactalis_or_dpa and cidade_planilha in ["N/A", "CIDADE NÃO ENCONTRADA"]:
                 motivo_erro = "Cidade não disponível na planilha para preenchimento do Perfil Apropriação."
                 log_callback(f"[F5] [Item {nro_cotacao}] ERRO: {motivo_erro}", "ERRO")
                 registrar_erro_em_planilha(dados_linha, motivo_erro, log_callback, output_filepath)
@@ -151,7 +159,7 @@ def preencher_contrato_frete(
 
         # ETAPA 3: Preencher Km
         pause_event.wait()
-        valor_km = "1" if is_lactalis else dados_km
+        valor_km = "1" if is_lactalis_or_dpa else dados_km
         log_callback(f"[F5] [Item {nro_cotacao}] Etapa 3: Preenchendo Km com '{valor_km}'...", "DEBUG")
         page.fill('input[name="dados_kms"]', valor_km)
 
@@ -159,8 +167,8 @@ def preencher_contrato_frete(
 
         # ETAPA 4: Pesquisar e Selecionar NCM
         pause_event.wait()
-        pesquisa_ncm = "0403" if is_lactalis else "vinho"
-        valor_ncm = "0403." if is_lactalis else "2204."
+        pesquisa_ncm = "0403" if is_lactalis_or_dpa else "vinho"
+        valor_ncm = "0403." if is_lactalis_or_dpa else "2204."
         
         log_callback(f"[F5] [Item {nro_cotacao}] Etapa 4: Pesquisando e selecionando NCM '{pesquisa_ncm}'...", "DEBUG")
         
@@ -254,7 +262,7 @@ def preencher_contrato_frete(
         # ETAPA 6: Preencher Observação
         pause_event.wait()
         
-        if is_lactalis:
+        if is_lactalis_or_dpa:
             data_validade_raw = dados_linha.get("Validade", "")
             if isinstance(data_validade_raw, datetime):
                 data_str = data_validade_raw.strftime('%d/%m/%Y')
@@ -376,7 +384,7 @@ def preencher_contrato_frete(
         # Define a data programada baseada no Remetente
         data_programada_final = None
         
-        if is_lactalis:
+        if is_lactalis_or_dpa:
             data_programada_final = _calcular_data_programada_lactalis(validade_raw, nro_cotacao, log_callback)
             if not data_programada_final:
                 motivo_erro = f"Não foi possível calcular a data da Lactalis ou coluna 'Validade' vazia (valor atual: '{validade_raw}')."

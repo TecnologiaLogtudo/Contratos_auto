@@ -188,12 +188,15 @@ def preencher_formulario(
             
             remetente_str = str(dados_linha.get("Remetente", "")).lower()
             is_lactalis = "lactalis" in remetente_str
+            is_dpa = "dpa" in remetente_str or "dairy partners" in remetente_str
             
             for opt in options:
                 option_text = opt.inner_text()
                 matches = option_text.strip().startswith(target_option_prefix)
                 if is_lactalis:
                     matches = matches and "lactalis" in option_text.lower()
+                elif is_dpa:
+                    matches = matches and ("dpa" in option_text.lower() or "dairy partners" in option_text.lower())
                 
                 if matches:
                     correct_option_value = opt.get_attribute("value")
@@ -206,7 +209,10 @@ def preencher_formulario(
             else:
                 # Erro: Cotação existe, mas não no formato esperado
                 available_options = [opt.inner_text().strip() for opt in options]
-                formato_esperado = f"'{target_option_prefix}' contendo 'Lactalis'" if is_lactalis else f"'{target_option_prefix}'"
+                formato_esperado = (
+                    f"'{target_option_prefix}' contendo 'Lactalis'" if is_lactalis
+                    else (f"'{target_option_prefix}' contendo 'DPA'" if is_dpa else f"'{target_option_prefix}'")
+                )
                 log_callback(f"[F3] [Item {nro_cotacao_item}] ERRO: Nenhuma opção de cotação correspondente ao formato {formato_esperado} foi encontrada.", "ERRO")
                 log_callback(f"[F3] [Item {nro_cotacao_item}] Opções disponíveis: {available_options}", "DEBUG")
                 registrar_erro_em_planilha(dados_linha, f"Cotação não encontrada no formato esperado ({formato_esperado}).", log_callback, output_filepath)
@@ -222,8 +228,8 @@ def preencher_formulario(
         # ETAPA 6: Substituir valor em "dados_complementoPedido"
         pause_event.wait()
         remetente_str = str(dados_linha.get("Remetente", "")).lower()
-        is_lactalis = "lactalis" in remetente_str
-        valor_pedido = "DIARIA PARADO" if is_lactalis else str(nro_cotacao_item)
+        is_lactalis_or_dpa = "lactalis" in remetente_str or "dpa" in remetente_str or "dairy partners" in remetente_str
+        valor_pedido = "DIARIA PARADO" if is_lactalis_or_dpa else str(nro_cotacao_item)
         log_callback(f"[F3] [Item {nro_cotacao_item}] Etapa 6: Preenchendo Complemento do Pedido com '{valor_pedido}'...", "DEBUG")
         page.fill('input[name="dados_complementoPedido"]', valor_pedido, force=True)
         time.sleep(atraso_etapas)

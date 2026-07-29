@@ -137,7 +137,7 @@ def _ler_com_openpyxl(filepath: str, ws_out: openpyxl.worksheet.worksheet.Worksh
                 cidade, uf = _processar_cidade_uf(cidade_uf_raw, row_idx, log_callback)
                 nome, placa, data_pagamento, viagem_extra = _processar_nome_placa(nome_placa_raw, row_idx, log_callback)
                 remetente = _processar_remetente(remetente_raw)
-                is_lactalis = "lactalis" in remetente.lower()
+                is_lactalis = "lactalis" in remetente.lower() or "dpa" in remetente.lower() or "dairy partners" in remetente.lower()
 
                 # Validação dos dados
                 erros = []
@@ -216,7 +216,7 @@ def _ler_com_xlrd(filepath: str, ws_out: openpyxl.worksheet.worksheet.Worksheet,
                 cidade, uf = _processar_cidade_uf(cidade_uf_raw, row_idx + 1, log_callback)
                 nome, placa, data_pagamento, viagem_extra = _processar_nome_placa(nome_placa_raw, row_idx + 1, log_callback)
                 remetente = _processar_remetente(remetente_raw)
-                is_lactalis = "lactalis" in remetente.lower()
+                is_lactalis = "lactalis" in remetente.lower() or "dpa" in remetente.lower() or "dairy partners" in remetente.lower()
 
                 # Validação dos dados
                 erros = []

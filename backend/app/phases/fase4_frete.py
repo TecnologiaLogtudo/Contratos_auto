@@ -214,6 +214,76 @@ def _sincronizar_remetente_destinatario_lactalis(page: Page, nro_cotacao: str, l
         return False
 
 
+def _sincronizar_remetente_destinatario_dpa(page: Page, nro_cotacao: str, log_callback: Callable, atraso_etapas: float) -> bool:
+    try:
+        log_callback(f"[F4] [Item {nro_cotacao}] Aplicando regra de destinatário DPA...", "DEBUG")
+        
+        # 1. Remetente: Pesquisar '05.300.331/0014-85'
+        page.fill('input[name="pesquisa_enderecoRemetente_id"]', '05.300.331/0014-85')
+        time.sleep(atraso_etapas)
+        page.click('i[name="botaoPesquisa_enderecoRemetente_id"]')
+        
+        remetente_selector = 'select[name="dados_enderecoRemetente_id"]'
+        page.wait_for_selector(f'{remetente_selector} option[value]:not([value=""])', state='attached', timeout=10000)
+        time.sleep(atraso_etapas)
+        
+        # Selecionar o segundo elemento da lista
+        options_remetente = page.locator(remetente_selector).locator("option").all()
+        remetentes_encontrados = []
+        for opt in options_remetente:
+            text = opt.inner_text().strip()
+            if "05.300.331/0014-85" in text or "DAIRY PARTNERS" in text.upper():
+                remetentes_encontrados.append(opt)
+                
+        remetente_value = None
+        if len(remetentes_encontrados) >= 2:
+            remetente_value = remetentes_encontrados[1].get_attribute("value")
+            log_callback(f"[F4] [Item {nro_cotacao}] Selecionando o segundo remetente DPA da lista: '{remetentes_encontrados[1].inner_text().strip()}'", "DEBUG")
+        elif len(remetentes_encontrados) == 1:
+            remetente_value = remetentes_encontrados[0].get_attribute("value")
+            log_callback(f"[F4] [Item {nro_cotacao}] AVISO: Apenas um remetente DPA encontrado. Selecionando o primeiro: '{remetentes_encontrados[0].inner_text().strip()}'", "AVISO")
+            
+        if remetente_value:
+            page.select_option(remetente_selector, value=remetente_value)
+            log_callback(f"[F4] [Item {nro_cotacao}] Remetente DPA selecionado com sucesso.", "INFO")
+        else:
+            log_callback(f"[F4] [Item {nro_cotacao}] ERRO: Remetente DPA não encontrado nas opções.", "ERRO")
+            return False
+            
+        time.sleep(atraso_etapas)
+
+        # 2. Destinatário: Pesquisar '20511709000169'
+        page.fill('input[name="pesquisa_enderecoDestinatario_id"]', '20511709000169')
+        time.sleep(atraso_etapas)
+        page.click('i[name="botaoPesquisa_enderecoDestinatario_id"]')
+        
+        destinatario_selector = 'select[name="dados_enderecoDestinatario_id"]'
+        page.wait_for_selector(f'{destinatario_selector} option[value]:not([value=""])', state='attached', timeout=10000)
+        time.sleep(atraso_etapas)
+        
+        options_destinatario = page.locator(destinatario_selector).locator("option").all()
+        destinatario_value = None
+        for opt in options_destinatario:
+            text = opt.inner_text().strip()
+            val = opt.get_attribute("value")
+            if val and val != "":
+                destinatario_value = val
+                log_callback(f"[F4] [Item {nro_cotacao}] Selecionando primeiro destinatário DPA com valor: '{text}'", "DEBUG")
+                break
+                
+        if destinatario_value:
+            page.select_option(destinatario_selector, value=destinatario_value)
+            log_callback(f"[F4] [Item {nro_cotacao}] Destinatário DPA selecionado com sucesso.", "INFO")
+        else:
+            log_callback(f"[F4] [Item {nro_cotacao}] ERRO: Destinatário DPA não encontrado nas opções.", "ERRO")
+            return False
+
+        return True
+    except Exception as e:
+        log_callback(f"[F4] [Item {nro_cotacao}] ERRO na Etapa 1 (Remetente/Destinatário DPA): {e}", "ERRO")
+        return False
+
+
 def preencher_frete(
     page: Page, 
     dados_linha: Dict[str, str], 
@@ -237,7 +307,10 @@ def preencher_frete(
         
         remetente_planilha = dados_linha.get("Remetente", "").upper()
 
-        if "LACTALIS" in remetente_planilha:
+        is_dpa = "DPA" in remetente_planilha or "DAIRY PARTNERS" in remetente_planilha
+        if is_dpa:
+            sucesso_etapa1 = _sincronizar_remetente_destinatario_dpa(page, nro_cotacao, log_callback, atraso_etapas)
+        elif "LACTALIS" in remetente_planilha:
             sucesso_etapa1 = _sincronizar_remetente_destinatario_lactalis(page, nro_cotacao, log_callback, atraso_etapas)
         else:
             # Fallback default (TAM)
@@ -402,8 +475,8 @@ def preencher_frete(
         # ETAPA 7: Selecionar Composição do Frete
         pause_event.wait()
         log_callback(f"[F4] [Item {nro_cotacao}] Etapa 7: Selecionando Composição do Frete...", "DEBUG")
-        if "LACTALIS" in remetente_planilha:
-            log_callback(f"[F4] [Item {nro_cotacao}] Remetente Lactalis detectado. Selecionando Cotação Varejo (120)...", "DEBUG")
+        if "LACTALIS" in remetente_planilha or "DPA" in remetente_planilha or "DAIRY PARTNERS" in remetente_planilha:
+            log_callback(f"[F4] [Item {nro_cotacao}] Remetente Lactalis/DPA detectado. Selecionando Cotação Varejo (120)...", "DEBUG")
             page.select_option('select[name="dados_regraFrete_id"]', value="120")
         else:
             log_callback(f"[F4] [Item {nro_cotacao}] Selecionando Não realiza cálculos (40)...", "DEBUG")
@@ -420,10 +493,10 @@ def preencher_frete(
         _preencher_campo_se_editavel(page, 'input[name="dados_valoresOutros"]', "0,00", log_callback, nro_cotacao, atraso_etapas)
         _preencher_campo_se_editavel(page, 'input[name="dados_totalPrestacao"]', "0,00", log_callback, nro_cotacao, atraso_etapas)
 
-        # ETAPA 8.5: Regra Lactalis - Preencher Frete Terceiros
-        if "LACTALIS" in remetente_planilha:
+        # ETAPA 8.5: Regra Lactalis/DPA - Preencher Frete Terceiros
+        if "LACTALIS" in remetente_planilha or "DPA" in remetente_planilha or "DAIRY PARTNERS" in remetente_planilha:
             pause_event.wait()
-            log_callback(f"[F4] [Item {nro_cotacao}] Etapa 8.5: Preenchendo Frete Terceiros para Lactalis...", "DEBUG")
+            log_callback(f"[F4] [Item {nro_cotacao}] Etapa 8.5: Preenchendo Frete Terceiros para Lactalis/DPA...", "DEBUG")
             frete_negociado = dados_linha.get("Frete negociado")
             frete_pagar = dados_linha.get("Frete a pagar")
             
