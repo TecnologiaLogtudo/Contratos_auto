@@ -128,6 +128,31 @@ def _formatar_moeda_lactalis(frete_negociado, frete_pagar) -> str:
     return f"{val_escolhido:.2f}".replace(".", ",")
 
 
+def _preencher_campo_se_editavel(
+    page: Page,
+    selector: str,
+    valor: str,
+    log_callback: Callable,
+    nro_cotacao: str,
+    atraso_etapas: float
+) -> None:
+    """
+    Tenta preencher um campo de texto. Se estiver bloqueado para edição (readonly/disabled),
+    registra um log de aviso e continua sem lançar erro.
+    """
+    try:
+        locator = page.locator(selector)
+        # Espera curta (até 3 segundos) para o campo estar disponível e visível
+        locator.wait_for(state="visible", timeout=3000)
+        if locator.is_editable():
+            locator.fill(valor)
+        else:
+            log_callback(f"[F4] [Item {nro_cotacao}] Campo '{selector}' bloqueado para edição (readonly/disabled). Ignorando.", "AVISO")
+    except Exception as e:
+        log_callback(f"[F4] [Item {nro_cotacao}] Não foi possível interagir com o campo '{selector}' (campo bloqueado para edição). Ignorando.", "AVISO")
+    time.sleep(atraso_etapas)
+
+
 def _sincronizar_remetente_destinatario_lactalis(page: Page, nro_cotacao: str, log_callback: Callable, atraso_etapas: float) -> bool:
     try:
         log_callback(f"[F4] [Item {nro_cotacao}] Aplicando regra de destinatário LACTALIS...", "DEBUG")
@@ -388,18 +413,12 @@ def preencher_frete(
         # ETAPA 8: Apagar valores
         pause_event.wait()
         log_callback(f"[F4] [Item {nro_cotacao}] Etapa 8: Zerando valores de frete...", "DEBUG")
-        page.fill('input[name="dados_valorFrete"]', "0,00")
-        time.sleep(atraso_etapas)
-        page.fill('input[name="dados_baseCalculo"]', "0,00")
-        time.sleep(atraso_etapas)
-        page.fill('input[name="dados_aliquota"]', "0,00")
-        time.sleep(atraso_etapas)
-        page.fill('input[name="dados_valorICMS"]', "0,00")
-        time.sleep(atraso_etapas)                
-        page.fill('input[name="dados_valoresOutros"]', "0,00")
-        time.sleep(atraso_etapas)
-        page.fill('input[name="dados_totalPrestacao"]', "0,00")
-        time.sleep(atraso_etapas)
+        _preencher_campo_se_editavel(page, 'input[name="dados_valorFrete"]', "0,00", log_callback, nro_cotacao, atraso_etapas)
+        _preencher_campo_se_editavel(page, 'input[name="dados_baseCalculo"]', "0,00", log_callback, nro_cotacao, atraso_etapas)
+        _preencher_campo_se_editavel(page, 'input[name="dados_aliquota"]', "0,00", log_callback, nro_cotacao, atraso_etapas)
+        _preencher_campo_se_editavel(page, 'input[name="dados_valorICMS"]', "0,00", log_callback, nro_cotacao, atraso_etapas)
+        _preencher_campo_se_editavel(page, 'input[name="dados_valoresOutros"]', "0,00", log_callback, nro_cotacao, atraso_etapas)
+        _preencher_campo_se_editavel(page, 'input[name="dados_totalPrestacao"]', "0,00", log_callback, nro_cotacao, atraso_etapas)
 
         # ETAPA 8.5: Regra Lactalis - Preencher Frete Terceiros
         if "LACTALIS" in remetente_planilha:
@@ -410,8 +429,7 @@ def preencher_frete(
             
             valor_moeda = _formatar_moeda_lactalis(frete_negociado, frete_pagar)
             log_callback(f"[F4] [Item {nro_cotacao}] Valor selecionado para frete terceiros: R$ {valor_moeda}", "DEBUG")
-            page.fill('input[name="dados_outrosValores[freteterceiros]"]', valor_moeda)
-            time.sleep(atraso_etapas)
+            _preencher_campo_se_editavel(page, 'input[name="dados_outrosValores[freteterceiros]"]', valor_moeda, log_callback, nro_cotacao, atraso_etapas)
 
         # ETAPA 9: Preencher campo de observação
         pause_event.wait()
