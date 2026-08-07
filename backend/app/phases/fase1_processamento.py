@@ -4,6 +4,7 @@ import os
 from typing import Callable, Tuple
 import re
 import unicodedata
+from ..companies import get_company
 
 # !!! ATENÇÃO: Defina o índice da coluna "Remetente" aqui !!!
 # O índice da coluna começa em 0. Se a coluna for 'A', o índice é 0; 'B' é 1; 'C' é 2, etc.
@@ -137,7 +138,7 @@ def _ler_com_openpyxl(filepath: str, ws_out: openpyxl.worksheet.worksheet.Worksh
                 cidade, uf = _processar_cidade_uf(cidade_uf_raw, row_idx, log_callback)
                 nome, placa, data_pagamento, viagem_extra = _processar_nome_placa(nome_placa_raw, row_idx, log_callback)
                 remetente = _processar_remetente(remetente_raw)
-                is_lactalis = "lactalis" in remetente.lower() or "dpa" in remetente.lower() or "dairy partners" in remetente.lower()
+                company = get_company(remetente)
 
                 # Validação dos dados
                 erros = []
@@ -145,9 +146,9 @@ def _ler_com_openpyxl(filepath: str, ws_out: openpyxl.worksheet.worksheet.Worksh
                     erros.append("Nome")
                 if placa == "PLACA NÃO ENCONTRADA":
                     erros.append("Placa")
-                if data_pagamento == "DATA NÃO ENCONTRADA" and not is_lactalis:
+                if data_pagamento == "DATA NÃO ENCONTRADA" and company.require_data_pagamento():
                     erros.append("Data pagamento")
-                if is_lactalis and (not validade_raw or str(validade_raw).strip() == ""):
+                if company.require_validade() and (not validade_raw or str(validade_raw).strip() == ""):
                     erros.append("Validade")
 
                 linha_base = [nro_cotacao, categoria, cidade, uf, nome, placa, data_pagamento]
@@ -216,7 +217,7 @@ def _ler_com_xlrd(filepath: str, ws_out: openpyxl.worksheet.worksheet.Worksheet,
                 cidade, uf = _processar_cidade_uf(cidade_uf_raw, row_idx + 1, log_callback)
                 nome, placa, data_pagamento, viagem_extra = _processar_nome_placa(nome_placa_raw, row_idx + 1, log_callback)
                 remetente = _processar_remetente(remetente_raw)
-                is_lactalis = "lactalis" in remetente.lower() or "dpa" in remetente.lower() or "dairy partners" in remetente.lower()
+                company = get_company(remetente)
 
                 # Validação dos dados
                 erros = []
@@ -224,9 +225,9 @@ def _ler_com_xlrd(filepath: str, ws_out: openpyxl.worksheet.worksheet.Worksheet,
                     erros.append("Nome")
                 if placa == "PLACA NÃO ENCONTRADA":
                     erros.append("Placa")
-                if data_pagamento == "DATA NÃO ENCONTRADA" and not is_lactalis:
+                if data_pagamento == "DATA NÃO ENCONTRADA" and company.require_data_pagamento():
                     erros.append("Data pagamento")
-                if is_lactalis and (not validade_raw or str(validade_raw).strip() == ""):
+                if company.require_validade() and (not validade_raw or str(validade_raw).strip() == ""):
                     erros.append("Validade")
 
                 linha_base = [nro_cotacao, categoria, cidade, uf, nome, placa, data_pagamento]

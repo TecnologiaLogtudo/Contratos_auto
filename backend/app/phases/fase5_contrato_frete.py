@@ -5,35 +5,9 @@ from datetime import datetime
 
 import time
 from .fase3_preenchimento import registrar_erro_em_planilha, registrar_sucesso_em_planilha
+from ..companies import get_company
 
-def _calcular_data_programada_lactalis(validade_raw: str, nro_cotacao: str, log_callback: Callable[[str, str], None]) -> str | None:
-    """Calcula a data programada para a Lactalis baseada na data de validade."""
-    if validade_raw and str(validade_raw).strip():
-        try:
-            if isinstance(validade_raw, datetime):
-                val_date = validade_raw
-            else:
-                import re
-                match = re.search(r'(\d{2})[-/](\d{2})[-/](\d{4})', str(validade_raw))
-                if match:
-                    val_date = datetime(int(match.group(3)), int(match.group(2)), int(match.group(1)))
-                else:
-                    raise ValueError("Formato desconhecido")
-                    
-            novo_mes = val_date.month + 1
-            novo_ano = val_date.year
-            if novo_mes > 12:
-                novo_mes = 1
-                novo_ano += 1
-                
-            novo_dia = 5 if val_date.day <= 15 else 20
-            data_final = f"{novo_dia:02d}/{novo_mes:02d}/{novo_ano}"
-            log_callback(f"[F5] [Item {nro_cotacao}] Regra Lactalis aplicada: Validade {val_date.strftime('%d/%m/%Y')} -> Programada {data_final}.", "DEBUG")
-            return data_final
-        except Exception as e:
-            log_callback(f"[F5] [Item {nro_cotacao}] AVISO: Falha ao calcular Lactalis pela Validade '{validade_raw}'. Erro: {e}", "AVISO")
-            return None
-    return None
+# Data programada calculada delegada para backend/app/companies/
 
 def preencher_contrato_frete(
     page: Page,
@@ -53,10 +27,8 @@ def preencher_contrato_frete(
         nro_cotacao = dados_linha.get("Nro cotação", "N/A")
         log_callback(f"[F5] [Item {nro_cotacao}] --- INÍCIO: CONTRATO DE FRETE ---", "FASE")
         
-        remetente_str = str(dados_linha.get("Remetente", "")).lower()
-        is_lactalis = "lactalis" in remetente_str
-        is_dpa = "dpa" in remetente_str or "dairy partners" in remetente_str
-        is_lactalis_or_dpa = is_lactalis or is_dpa
+        remetente_str = str(dados_linha.get("Remetente", ""))
+        company = get_company(remetente_str)
 
         # ETAPA 1: Preencher Data Final de Viagem
         pause_event.wait()
@@ -64,28 +36,19 @@ def preencher_contrato_frete(
         data_fim_viagem_selector = 'input[name="dados_dtFimViagem"]'
         data_pagamento_raw = dados_linha.get("Data pagamento", "DATA NÃO ENCONTRADA")
 
-        if is_lactalis_or_dpa:
-            data_emissao = page.input_value('input[name="dados_dtEmissaoRF"]')
-            log_callback(f"[F5] [Item {nro_cotacao}] Regra Lactalis: Usando Data de Emissão '{data_emissao}' para 'Fim viagem'.", "DEBUG")
-            data_pagamento_com_hora = data_emissao
-            
-            page.click(data_fim_viagem_selector)
-            page.fill(data_fim_viagem_selector, data_pagamento_com_hora)
-            log_callback(f"[F5] [Item {nro_cotacao}] Campo 'Fim viagem' preenchido com '{data_pagamento_com_hora}'.", "DEBUG")
-        elif data_pagamento_raw and data_pagamento_raw != "DATA NÃO ENCONTRADA":
-            # Garante que a data esteja no formato string dd/mm/aaaa
+        # Garante que a data esteja no formato string dd/mm/aaaa se disponível
+        data_pagamento = ""
+        if data_pagamento_raw and data_pagamento_raw != "DATA NÃO ENCONTRADA":
             if isinstance(data_pagamento_raw, datetime):
                 data_pagamento = data_pagamento_raw.strftime('%d/%m/%Y')
             else:
-                # Se já for string, assume que está no formato correto (vindo da fase 1)
                 data_pagamento = str(data_pagamento_raw)
 
-            log_callback(f"[F5] [Item {nro_cotacao}] Preenchendo 'Fim viagem' com 'Data pagamento': '{data_pagamento}'.", "DEBUG")
-            data_pagamento_com_hora = f"{data_pagamento} 12:00"
-
+        data_fim_viagem_val = company.get_fim_viagem(page, dados_linha, data_pagamento, log_callback)
+        if data_fim_viagem_val:
             page.click(data_fim_viagem_selector)
-            page.fill(data_fim_viagem_selector, data_pagamento_com_hora)
-            log_callback(f"[F5] [Item {nro_cotacao}] Campo 'Fim viagem' preenchido com '{data_pagamento_com_hora}'.", "DEBUG")
+            page.fill(data_fim_viagem_selector, data_fim_viagem_val)
+            log_callback(f"[F5] [Item {nro_cotacao}] Campo 'Fim viagem' preenchido with '{data_fim_viagem_val}'.", "DEBUG")
         else:
             motivo_erro = "Data de pagamento não encontrada na planilha para preencher 'Data Final da Viagem'."
             log_callback(f"[F5] [Item {nro_cotacao}] ERRO: {motivo_erro} Cancelando item.", "ERRO")
@@ -102,14 +65,9 @@ def preencher_contrato_frete(
         perfil_apropriacao_select_selector = 'select[name="dados_perfisApropriacao_id"]'
 
         try:
-            if is_dpa:
-                termo_busca_perfil = "dpa BA"
-            elif is_lactalis:
-                termo_busca_perfil = "lactalis BA"
-            else:
-                termo_busca_perfil = cidade_planilha
+            termo_busca_perfil = company.get_termo_busca_perfil(cidade_planilha)
                 
-            if not is_lactalis_or_dpa and cidade_planilha in ["N/A", "CIDADE NÃO ENCONTRADA"]:
+            if termo_busca_perfil == cidade_planilha and cidade_planilha in ["N/A", "CIDADE NÃO ENCONTRADA"]:
                 motivo_erro = "Cidade não disponível na planilha para preenchimento do Perfil Apropriação."
                 log_callback(f"[F5] [Item {nro_cotacao}] ERRO: {motivo_erro}", "ERRO")
                 registrar_erro_em_planilha(dados_linha, motivo_erro, log_callback, output_filepath)
@@ -159,7 +117,7 @@ def preencher_contrato_frete(
 
         # ETAPA 3: Preencher Km
         pause_event.wait()
-        valor_km = "1" if is_lactalis_or_dpa else dados_km
+        valor_km = company.get_valor_km(dados_km)
         log_callback(f"[F5] [Item {nro_cotacao}] Etapa 3: Preenchendo Km com '{valor_km}'...", "DEBUG")
         page.fill('input[name="dados_kms"]', valor_km)
 
@@ -167,8 +125,8 @@ def preencher_contrato_frete(
 
         # ETAPA 4: Pesquisar e Selecionar NCM
         pause_event.wait()
-        pesquisa_ncm = "0403" if is_lactalis_or_dpa else "vinho"
-        valor_ncm = "0403." if is_lactalis_or_dpa else "2204."
+        pesquisa_ncm = company.get_ncm_pesquisa()
+        valor_ncm = company.get_ncm_valor()
         
         log_callback(f"[F5] [Item {nro_cotacao}] Etapa 4: Pesquisando e selecionando NCM '{pesquisa_ncm}'...", "DEBUG")
         
@@ -262,15 +220,7 @@ def preencher_contrato_frete(
         # ETAPA 6: Preencher Observação
         pause_event.wait()
         
-        if is_lactalis_or_dpa:
-            data_validade_raw = dados_linha.get("Validade", "")
-            if isinstance(data_validade_raw, datetime):
-                data_str = data_validade_raw.strftime('%d/%m/%Y')
-            else:
-                data_str = str(data_validade_raw)
-            obs_text = f"DIARIA PARADA {data_str}"
-        else:
-            obs_text = "Contrato Diária"
+        obs_text = company.get_observacao(dados_linha)
             
         log_callback(f"[F5] [Item {nro_cotacao}] Etapa 6: Preenchendo Observação '{obs_text}'...", "DEBUG")
         page.fill('textarea[name="dados_obs"]', obs_text)
@@ -384,25 +334,15 @@ def preencher_contrato_frete(
         # Define a data programada baseada no Remetente
         data_programada_final = None
         
-        if is_lactalis_or_dpa:
-            data_programada_final = _calcular_data_programada_lactalis(validade_raw, nro_cotacao, log_callback)
-            if not data_programada_final:
+        data_programada_final = company.get_data_programada(dados_linha, data_pagamento, log_callback)
+        if not data_programada_final:
+            if company.require_validade():
                 motivo_erro = f"Não foi possível calcular a data da Lactalis ou coluna 'Validade' vazia (valor atual: '{validade_raw}')."
-                log_callback(f"[F5] [Item {nro_cotacao}] ERRO: {motivo_erro}", "ERRO")
-                registrar_erro_em_planilha(dados_linha, motivo_erro, log_callback, output_filepath)
-                return False
-        else:
-            # Regra Padrão (LATAM e outros): Usa Data de Pagamento
-            if data_pagamento_raw and data_pagamento_raw != "DATA NÃO ENCONTRADA":
-                if isinstance(data_pagamento_raw, datetime):
-                    data_programada_final = data_pagamento_raw.strftime('%d/%m/%Y')
-                else:
-                    data_programada_final = str(data_pagamento_raw)
             else:
                 motivo_erro = "Data de pagamento não encontrada na planilha."
-                log_callback(f"[F5] [Item {nro_cotacao}] ERRO: {motivo_erro} Cancelando item.", "ERRO")
-                registrar_erro_em_planilha(dados_linha, motivo_erro, log_callback, output_filepath)
-                return False # Sinaliza falha para pular para o próximo item
+            log_callback(f"[F5] [Item {nro_cotacao}] ERRO: {motivo_erro}", "ERRO")
+            registrar_erro_em_planilha(dados_linha, motivo_erro, log_callback, output_filepath)
+            return False
 
         if data_programada_final:
             log_callback(f"[F5] [Item {nro_cotacao}] Preenchendo Data Programada com '{data_programada_final}'.", "DEBUG")

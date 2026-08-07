@@ -871,6 +871,27 @@ class AutomationManager:
                 self._update_progress(job, idx - 1, total, f"Processando cotação {nro}")
                 job.emit(f"--- Processando Item {idx}/{total} (Cotação: {nro}) ---", "INFO")
 
+                # Determina a estratégia da empresa para direcionar a navegação inicial
+                remetente_planilha = item.get("Remetente", "")
+                from ..companies import get_company
+                company = get_company(remetente_planilha)
+
+                if hasattr(company, "preparar_dados_cotacao"):
+                    ok_prep = company.preparar_dados_cotacao(job.page, item, job.emit, cfg.atraso_etapas)
+                    if not ok_prep:
+                        job.take_screenshot(f"falha_preparacao_cotacao_{nro}")
+                        self._sleep_or_stop(job, cfg.atraso_fases)
+                        self._reset_session(job, nro, cfg.atraso_fases)
+                        continue
+                else:
+                    # Regras padrão: navega direto para o formulário de Conhecimento
+                    try:
+                        job.page.goto(URL_DESTINO, wait_until="load", timeout=60000)
+                    except Exception as goto_err:
+                        job.emit(f"Erro ao navegar para o formulário inicial: {goto_err}", "ERRO")
+                        self._reset_session(job, nro, cfg.atraso_fases)
+                        continue
+
                 ok3 = fase3_preenchimento.preencher_formulario(job.page, item, job.emit, job.pause_event, job.planilha_processada_path, cfg.atraso_etapas, cfg.atraso_fases)
                 if not ok3:
                     job.take_screenshot(f"falha_formulario_cotacao_{nro}")
@@ -896,7 +917,6 @@ class AutomationManager:
 
                 job.take_screenshot(f"sucesso_contrato_cotacao_{nro}")
                 self._sleep_or_stop(job, cfg.atraso_fases)
-                job.page.goto(URL_DESTINO, wait_until="load", timeout=60000)
                 self._update_progress(job, idx, total, f"Cotação {nro} concluída")
 
             with job.lock:

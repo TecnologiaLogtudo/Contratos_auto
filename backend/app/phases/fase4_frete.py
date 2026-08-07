@@ -4,6 +4,7 @@ from playwright.sync_api import Page, Error
 from typing import Callable, Dict
 import re
 import unicodedata
+from ..companies import get_company
 
 
 def _normalizar_texto(texto: str) -> str:
@@ -30,102 +31,9 @@ def _alternativas_busca_cidade(cidade: str) -> list[str]:
     return alternativas
 
 
-def _sincronizar_destinatario_latam(page: Page, nro_cotacao: str, log_callback: Callable, atraso_etapas: float) -> bool:
-    """
-    Regra atual da LATAM: Destinatário é cópia do Remetente (Busca pelo CNPJ e seleciona ID exato)
-    """
-    destinatario_selector = 'select[name="dados_enderecoDestinatario_id"]'
-    remetente_selector = 'select[name="dados_enderecoRemetente_id"]'
+# Sincronização e formatação delegados para o módulo backend/app/companies/
 
-    try:
-        # 1. Espera o campo Remetente estar anexado/disponível
-        page.wait_for_selector(remetente_selector, state='attached', timeout=5000)
-        remetente_value = page.input_value(remetente_selector)
-
-        if not remetente_value:
-            log_callback(f"[F4] [Item {nro_cotacao}] ERRO: Remetente está vazio. Não é possível pesquisar o Destinatário.", "ERRO")
-            return False
-
-        # Tenta obter o texto do remetente para extrair o CNPJ
-        remetente_text = "N/A"
-        try:
-            remetente_text = page.locator(f'{remetente_selector} option[value="{remetente_value}"]').inner_text().strip()
-        except Exception:
-            try:
-                remetente_text = page.evaluate('() => { const select = document.querySelector(\'select[name="dados_enderecoRemetente_id"]\'); return select ? select.options[select.selectedIndex].text : ""; }').strip()
-            except Exception:
-                remetente_text = f"Valor {remetente_value}"
-
-        # Extrai o CNPJ desconsiderando sinais
-        # Padrão busca formato CNPJ ou sequência de 14 dígitos
-        cnpj_match = re.search(r'(\d{2}\.\d{3}\.\d{3}/\d{4}-\d{2})|(\d{14})', remetente_text)
-        if cnpj_match:
-            cnpj = re.sub(r'\D', '', cnpj_match.group(0))
-        else:
-            # Caso não encontre no padrão, tenta extrair todos os dígitos e pegar os primeiros 14
-            digits = re.sub(r'\D', '', remetente_text)
-            if len(digits) >= 14:
-                cnpj = digits[:14]
-            else:
-                log_callback(f"[F4] [Item {nro_cotacao}] ERRO: Não foi possível obter o CNPJ do Remetente ('{remetente_text}').", "ERRO")
-                return False
-
-        log_callback(f"[F4] [Item {nro_cotacao}] Etapa 1: Pesquisando Destinatário pelo CNPJ '{cnpj}' do Remetente...", "DEBUG")
-
-        # Preenche o CNPJ no campo de pesquisa do Destinatário
-        page.fill('input[name="pesquisa_enderecoDestinatario_id"]', cnpj)
-        time.sleep(atraso_etapas)
-
-        # Clica em Pesquisar
-        page.click('i[name="botaoPesquisa_enderecoDestinatario_id"]')
-
-        # Espera as opções do select carregarem
-        page.wait_for_selector(f'{destinatario_selector} option[value]:not([value=""])', state='attached', timeout=10000)
-        time.sleep(atraso_etapas)
-
-        # 2. Siga o fluxo normalmente: comparar com o valor de Remetente e selecionar
-        destinatario_value = page.input_value(destinatario_selector)
-
-        if destinatario_value != remetente_value:
-            log_callback(f"[F4] [Item {nro_cotacao}] AVISO: Destinatário diferente do Remetente. Tentando selecionar o valor exato do Remetente ('{remetente_text}')...", "AVISO")
-            try:
-                # Seleciona a opção com valor idêntico ao remetente
-                page.select_option(destinatario_selector, value=remetente_value)
-                time.sleep(atraso_etapas)
-
-                # Verifica se a seleção funcionou
-                if page.input_value(destinatario_selector) == remetente_value:
-                    log_callback(f"[F4] [Item {nro_cotacao}] Destinatário sincronizado com o Remetente com sucesso.", "INFO")
-                else:
-                    log_callback(f"[F4] [Item {nro_cotacao}] ERRO: Não foi possível selecionar o valor do Remetente no campo Destinatário (opção não disponível).", "ERRO")
-                    return False
-            except Exception as e_sel:
-                log_callback(f"[F4] [Item {nro_cotacao}] ERRO ao tentar sincronizar Destinatário: {e_sel}", "ERRO")
-                return False
-        else:
-            log_callback(f"[F4] [Item {nro_cotacao}] Destinatário e Remetente estão sincronizados.", "INFO")
-
-    except Exception as e:
-        log_callback(f"[F4] [Item {nro_cotacao}] ERRO na Etapa 1 (Destinatário/Remetente LATAM): {e}", "ERRO")
-        return False
-        
-    return True
-
-def _formatar_moeda_lactalis(frete_negociado, frete_pagar) -> str:
-    def parse_float(v):
-        if v is None: return 0.0
-        if isinstance(v, (int, float)): return float(v)
-        v_str = str(v).replace("R$", "").replace(".", "").replace(",", ".").strip()
-        try:
-            return float(v_str)
-        except ValueError:
-            return 0.0
-            
-    fn_val = parse_float(frete_negociado)
-    fp_val = parse_float(frete_pagar)
-    
-    val_escolhido = fn_val if fn_val > 0 else fp_val
-    return f"{val_escolhido:.2f}".replace(".", ",")
+# Remetido Lactalis formatar_moeda delegado para backend/app/companies/
 
 
 def _preencher_campo_se_editavel(
@@ -153,135 +61,10 @@ def _preencher_campo_se_editavel(
     time.sleep(atraso_etapas)
 
 
-def _sincronizar_remetente_destinatario_lactalis(page: Page, nro_cotacao: str, log_callback: Callable, atraso_etapas: float) -> bool:
-    try:
-        log_callback(f"[F4] [Item {nro_cotacao}] Aplicando regra de destinatário LACTALIS...", "DEBUG")
-        
-        # 1. Remetente: Pesquisar 'Lactalis'
-        page.fill('input[name="pesquisa_enderecoRemetente_id"]', 'Lactalis')
-        time.sleep(atraso_etapas)
-        page.click('i[name="botaoPesquisa_enderecoRemetente_id"]')
-        
-        remetente_selector = 'select[name="dados_enderecoRemetente_id"]'
-        page.wait_for_selector(f'{remetente_selector} option[value]:not([value=""])', state='attached', timeout=10000)
-        time.sleep(atraso_etapas)
-        
-        # Selecionar '43.340.312/0006-61...'
-        options_remetente = page.locator(remetente_selector).locator("option").all()
-        remetente_value = None
-        for opt in options_remetente:
-            text = opt.inner_text().strip()
-            if "43.340.312/0006-61" in text:
-                remetente_value = opt.get_attribute("value")
-                break
-        
-        if remetente_value:
-            page.select_option(remetente_selector, value=remetente_value)
-            log_callback(f"[F4] [Item {nro_cotacao}] Remetente LACTALIS selecionado com sucesso.", "INFO")
-        else:
-            log_callback(f"[F4] [Item {nro_cotacao}] ERRO: Remetente LACTALIS não encontrado nas opções.", "ERRO")
-            return False
-            
-        time.sleep(atraso_etapas)
-
-        # 2. Destinatário: Pesquisar 'Logtudo'
-        page.fill('input[name="pesquisa_enderecoDestinatario_id"]', 'Logtudo')
-        time.sleep(atraso_etapas)
-        page.click('i[name="botaoPesquisa_enderecoDestinatario_id"]')
-        
-        destinatario_selector = 'select[name="dados_enderecoDestinatario_id"]'
-        page.wait_for_selector(f'{destinatario_selector} option[value]:not([value=""])', state='attached', timeout=10000)
-        time.sleep(atraso_etapas)
-        
-        options_destinatario = page.locator(destinatario_selector).locator("option").all()
-        destinatario_value = None
-        for opt in options_destinatario:
-            text = opt.inner_text().strip()
-            if "20.511.709/0001-69" in text:
-                destinatario_value = opt.get_attribute("value")
-                break
-                
-        if destinatario_value:
-            page.select_option(destinatario_selector, value=destinatario_value)
-            log_callback(f"[F4] [Item {nro_cotacao}] Destinatário LOGTUDO selecionado com sucesso.", "INFO")
-        else:
-            log_callback(f"[F4] [Item {nro_cotacao}] ERRO: Destinatário LOGTUDO não encontrado nas opções.", "ERRO")
-            return False
-
-        return True
-    except Exception as e:
-        log_callback(f"[F4] [Item {nro_cotacao}] ERRO na Etapa 1 (Remetente/Destinatário LACTALIS): {e}", "ERRO")
-        return False
+# Remetido Lactalis sync delegado para backend/app/companies/
 
 
-def _sincronizar_remetente_destinatario_dpa(page: Page, nro_cotacao: str, log_callback: Callable, atraso_etapas: float) -> bool:
-    try:
-        log_callback(f"[F4] [Item {nro_cotacao}] Aplicando regra de destinatário DPA...", "DEBUG")
-        
-        # 1. Remetente: Pesquisar '05.300.331/0014-85'
-        page.fill('input[name="pesquisa_enderecoRemetente_id"]', '05.300.331/0014-85')
-        time.sleep(atraso_etapas)
-        page.click('i[name="botaoPesquisa_enderecoRemetente_id"]')
-        
-        remetente_selector = 'select[name="dados_enderecoRemetente_id"]'
-        page.wait_for_selector(f'{remetente_selector} option[value]:not([value=""])', state='attached', timeout=10000)
-        time.sleep(atraso_etapas)
-        
-        # Selecionar o segundo elemento da lista
-        options_remetente = page.locator(remetente_selector).locator("option").all()
-        remetentes_encontrados = []
-        for opt in options_remetente:
-            text = opt.inner_text().strip()
-            if "05.300.331/0014-85" in text or "DAIRY PARTNERS" in text.upper():
-                remetentes_encontrados.append(opt)
-                
-        remetente_value = None
-        if len(remetentes_encontrados) >= 2:
-            remetente_value = remetentes_encontrados[1].get_attribute("value")
-            log_callback(f"[F4] [Item {nro_cotacao}] Selecionando o segundo remetente DPA da lista: '{remetentes_encontrados[1].inner_text().strip()}'", "DEBUG")
-        elif len(remetentes_encontrados) == 1:
-            remetente_value = remetentes_encontrados[0].get_attribute("value")
-            log_callback(f"[F4] [Item {nro_cotacao}] AVISO: Apenas um remetente DPA encontrado. Selecionando o primeiro: '{remetentes_encontrados[0].inner_text().strip()}'", "AVISO")
-            
-        if remetente_value:
-            page.select_option(remetente_selector, value=remetente_value)
-            log_callback(f"[F4] [Item {nro_cotacao}] Remetente DPA selecionado com sucesso.", "INFO")
-        else:
-            log_callback(f"[F4] [Item {nro_cotacao}] ERRO: Remetente DPA não encontrado nas opções.", "ERRO")
-            return False
-            
-        time.sleep(atraso_etapas)
-
-        # 2. Destinatário: Pesquisar '20511709000169'
-        page.fill('input[name="pesquisa_enderecoDestinatario_id"]', '20511709000169')
-        time.sleep(atraso_etapas)
-        page.click('i[name="botaoPesquisa_enderecoDestinatario_id"]')
-        
-        destinatario_selector = 'select[name="dados_enderecoDestinatario_id"]'
-        page.wait_for_selector(f'{destinatario_selector} option[value]:not([value=""])', state='attached', timeout=10000)
-        time.sleep(atraso_etapas)
-        
-        options_destinatario = page.locator(destinatario_selector).locator("option").all()
-        destinatario_value = None
-        for opt in options_destinatario:
-            text = opt.inner_text().strip()
-            val = opt.get_attribute("value")
-            if val and val != "":
-                destinatario_value = val
-                log_callback(f"[F4] [Item {nro_cotacao}] Selecionando primeiro destinatário DPA com valor: '{text}'", "DEBUG")
-                break
-                
-        if destinatario_value:
-            page.select_option(destinatario_selector, value=destinatario_value)
-            log_callback(f"[F4] [Item {nro_cotacao}] Destinatário DPA selecionado com sucesso.", "INFO")
-        else:
-            log_callback(f"[F4] [Item {nro_cotacao}] ERRO: Destinatário DPA não encontrado nas opções.", "ERRO")
-            return False
-
-        return True
-    except Exception as e:
-        log_callback(f"[F4] [Item {nro_cotacao}] ERRO na Etapa 1 (Remetente/Destinatário DPA): {e}", "ERRO")
-        return False
+# Remetido DPA sync delegado para backend/app/companies/
 
 
 def preencher_frete(
@@ -305,16 +88,9 @@ def preencher_frete(
         # ETAPA 1: Destinatário (buscar pelo CNPJ do Remetente e sincronizar)
         pause_event.wait()
         
-        remetente_planilha = dados_linha.get("Remetente", "").upper()
-
-        is_dpa = "DPA" in remetente_planilha or "DAIRY PARTNERS" in remetente_planilha
-        if is_dpa:
-            sucesso_etapa1 = _sincronizar_remetente_destinatario_dpa(page, nro_cotacao, log_callback, atraso_etapas)
-        elif "LACTALIS" in remetente_planilha:
-            sucesso_etapa1 = _sincronizar_remetente_destinatario_lactalis(page, nro_cotacao, log_callback, atraso_etapas)
-        else:
-            # Fallback default (TAM)
-            sucesso_etapa1 = _sincronizar_destinatario_latam(page, nro_cotacao, log_callback, atraso_etapas)
+        remetente_planilha = dados_linha.get("Remetente", "")
+        company = get_company(remetente_planilha)
+        sucesso_etapa1 = company.sincronizar_remetente_destinatario(page, nro_cotacao, log_callback, atraso_etapas)
 
         if not sucesso_etapa1:
             return False
@@ -382,7 +158,7 @@ def preencher_frete(
                 log_callback(f"[F4] [Item {nro_cotacao}] AVISO: Cidade 'João Pessoa' não encontrada. Tentando 'Pessoa'...", "AVISO")
                 if _perform_city_search_and_selection("Pessoa"):
                     cidade_encontrada = True
-        
+                        
         if not cidade_encontrada:
             log_callback(f"[F4] [Item {nro_cotacao}] ERRO: Não foi possível encontrar a cidade '{cidade}', 'João Pessoa' ou 'Pessoa' após as tentativas.", "ERRO")
             return False
@@ -475,12 +251,12 @@ def preencher_frete(
         # ETAPA 7: Selecionar Composição do Frete
         pause_event.wait()
         log_callback(f"[F4] [Item {nro_cotacao}] Etapa 7: Selecionando Composição do Frete...", "DEBUG")
-        if "LACTALIS" in remetente_planilha or "DPA" in remetente_planilha or "DAIRY PARTNERS" in remetente_planilha:
+        regra_frete_id = company.get_regra_frete_id()
+        if regra_frete_id == "120":
             log_callback(f"[F4] [Item {nro_cotacao}] Remetente Lactalis/DPA detectado. Selecionando Cotação Varejo (120)...", "DEBUG")
-            page.select_option('select[name="dados_regraFrete_id"]', value="120")
         else:
-            log_callback(f"[F4] [Item {nro_cotacao}] Selecionando Não realiza cálculos (40)...", "DEBUG")
-            page.select_option('select[name="dados_regraFrete_id"]', value="40")
+            log_callback(f"[F4] [Item {nro_cotacao}] Selecionando Não realiza cálculos ({regra_frete_id})...", "DEBUG")
+        page.select_option('select[name="dados_regraFrete_id"]', value=regra_frete_id)
         time.sleep(atraso_etapas)
 
         # ETAPA 8: Apagar valores
@@ -494,28 +270,21 @@ def preencher_frete(
         _preencher_campo_se_editavel(page, 'input[name="dados_totalPrestacao"]', "0,00", log_callback, nro_cotacao, atraso_etapas)
 
         # ETAPA 8.5: Regra Lactalis/DPA - Preencher Frete Terceiros
-        if "LACTALIS" in remetente_planilha or "DPA" in remetente_planilha or "DAIRY PARTNERS" in remetente_planilha:
+        if company.get_regra_frete_id() == "120":
             pause_event.wait()
             log_callback(f"[F4] [Item {nro_cotacao}] Etapa 8.5: Preenchendo Frete Terceiros para Lactalis/DPA...", "DEBUG")
-            frete_negociado = dados_linha.get("Frete negociado")
-            frete_pagar = dados_linha.get("Frete a pagar")
-            
-            valor_moeda = _formatar_moeda_lactalis(frete_negociado, frete_pagar)
-            log_callback(f"[F4] [Item {nro_cotacao}] Valor selecionado para frete terceiros: R$ {valor_moeda}", "DEBUG")
-            _preencher_campo_se_editavel(page, 'input[name="dados_outrosValores[freteterceiros]"]', valor_moeda, log_callback, nro_cotacao, atraso_etapas)
+            company.preencher_frete_terceiros(page, dados_linha, log_callback, nro_cotacao, atraso_etapas)
+
+        # Novo: Preenchimento de campos específicos da empresa (como Senha Ravex)
+        company.preencher_campos_especificos_fase4(page, dados_linha, nro_cotacao, log_callback, atraso_etapas)
 
         # ETAPA 9: Preencher campo de observação
         pause_event.wait()
         log_callback(f"[F4] [Item {nro_cotacao}] Etapa 9: Preenchendo Observação...", "DEBUG")
         
-        partes_obs = []
-        if nome_motorista != "NOME NÃO ENCONTRADO":
-            partes_obs.append(nome_motorista)
-        if placa != "PLACA NÃO ENCONTRADA":
-            partes_obs.append(placa)
+        observacao = company.get_observacao_pv(dados_linha, nro_cotacao)
 
-        if partes_obs:
-            observacao = " - ".join(partes_obs)
+        if observacao:
             log_callback(f"[F4] [Item {nro_cotacao}] Preenchendo observação com: '{observacao}'", "DEBUG")
             
             obs_selector = 'textarea[name="dados_observacaoPV"]'
@@ -535,7 +304,7 @@ def preencher_frete(
             except Error as e:
                 log_callback(f"[F4] [Item {nro_cotacao}] AVISO: Erro ao preencher observação: {e}", "AVISO")
         else:
-            log_callback(f"[F4] [Item {nro_cotacao}] Nome e placa não encontrados. Pulando observação.", "AVISO")
+            log_callback(f"[F4] [Item {nro_cotacao}] Nenhuma observação a preencher. Pulando.", "AVISO")
         time.sleep(atraso_etapas)
 
         # ETAPA 10: Marcar caixa "Ciente... valor zerado"
@@ -546,12 +315,20 @@ def preencher_frete(
 
         # ETAPA 11: Clicar em "Avançar" para ir para a Fase 5
         pause_event.wait()
-        log_callback(f"[F4] [Item {nro_cotacao}] Etapa 11: Clicando em 'Avançar' para a Fase 5...", "DEBUG")
-        botao_avancar_selector = '#botao_avancar'
-        primeiro_campo_fase5_selector = 'input[name="dados_dtFimViagem"]'
-        page.click(botao_avancar_selector)
-        log_callback(f"[F4] [Item {nro_cotacao}] Aguardando transição para a Fase 5...", "DEBUG")
-        page.wait_for_selector(primeiro_campo_fase5_selector, state="visible", timeout=30000)
+        log_callback(f"[F4] [Item {nro_cotacao}] Etapa 11: Realizando a transição para a Fase 5...", "DEBUG")
+        
+        if hasattr(company, "transicionar_para_fase5"):
+            sucesso_transicao = company.transicionar_para_fase5(page, nro_cotacao, log_callback, atraso_etapas)
+        else:
+            botao_avancar_selector = '#botao_avancar'
+            primeiro_campo_fase5_selector = 'input[name="dados_dtFimViagem"]'
+            page.click(botao_avancar_selector)
+            log_callback(f"[F4] [Item {nro_cotacao}] Aguardando transição para a Fase 5...", "DEBUG")
+            page.wait_for_selector(primeiro_campo_fase5_selector, state="visible", timeout=30000)
+            sucesso_transicao = True
+
+        if not sucesso_transicao:
+            return False
 
         log_callback(f"[F4] [Item {nro_cotacao}] Fase concluída com sucesso.", "SUCESSO")
         return True

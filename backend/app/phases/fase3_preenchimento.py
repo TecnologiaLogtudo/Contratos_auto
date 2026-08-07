@@ -5,6 +5,7 @@ from typing import Callable, Dict, Optional
 import openpyxl
 from openpyxl.styles import PatternFill
 import os
+from ..companies import get_company
 
 excel_lock = threading.Lock()
 
@@ -153,86 +154,29 @@ def preencher_formulario(
         page.check('input[name="dados_emitirReciboFrete[]"]')
         time.sleep(atraso_etapas)
 
-        # ETAPA 4: Preencher "Nro cotação"
+        # ETAPA 4-5.1: Executar pesquisa e seleção da cotação
         pause_event.wait()
-        log_callback(f"[F3] [Item {nro_cotacao_item}] Etapa 4: Preenchendo Nro Cotação ({nro_cotacao})...", "DEBUG")
-        page.fill('input[name="pesquisa_pedidos_id"]', str(nro_cotacao))
-        time.sleep(atraso_etapas)
-
-        # ETAPA 5: Clicar em Pesquisar
-        pause_event.wait()
-        log_callback(f"[F3] [Item {nro_cotacao_item}] Etapa 5: Clicando em Pesquisar...", "DEBUG")
-        page.click('i[name="botaoPesquisa_pedidos_id"]')
-        page.wait_for_timeout(500)
-        time.sleep(atraso_etapas)
-
-        # ETAPA 5.1: Verificar e selecionar a cotação correta
-        pause_event.wait()
-        log_callback(f"[F3] [Item {nro_cotacao_item}] Etapa 5.1: Verificando e selecionando a cotação...", "DEBUG")
-        try:
-            select_locator = page.locator('select[name="dados_pedidos_id"]')
-            select_locator.wait_for(timeout=5000)
-
-            options = select_locator.locator("option").all()
-            
-            # Caso 1: Nenhum registro encontrado
-            if any("Nenhum registro encontrado!" in opt.inner_text() for opt in options):
-                motivo_erro = "Nenhum registro de cotação encontrado no sistema."
-                log_callback(f"[F3] [Item {nro_cotacao_item}] {motivo_erro}", "ERRO")
-                registrar_erro_em_planilha(dados_linha, motivo_erro, log_callback, output_filepath)
-                return False
-
-            # Caso 2 e 3: Encontrar e selecionar a opção correta
-            target_option_prefix = f"{nro_cotacao} /"
-            correct_option_value = None
-            
-            remetente_str = str(dados_linha.get("Remetente", "")).lower()
-            is_lactalis = "lactalis" in remetente_str
-            is_dpa = "dpa" in remetente_str or "dairy partners" in remetente_str
-            
-            for opt in options:
-                option_text = opt.inner_text()
-                matches = option_text.strip().startswith(target_option_prefix)
-                if is_lactalis:
-                    matches = matches and "lactalis" in option_text.lower()
-                elif is_dpa:
-                    matches = matches and ("dpa" in option_text.lower() or "dairy partners" in option_text.lower())
-                
-                if matches:
-                    correct_option_value = opt.get_attribute("value")
-                    log_callback(f"[F3] [Item {nro_cotacao_item}] Opção correspondente encontrada: '{option_text.strip()}'", "DEBUG")
-                    break
-            
-            if correct_option_value is not None:
-                select_locator.select_option(value=correct_option_value)
-                log_callback(f"[F3] [Item {nro_cotacao_item}] Cotação selecionada com sucesso.", "INFO")
-            else:
-                # Erro: Cotação existe, mas não no formato esperado
-                available_options = [opt.inner_text().strip() for opt in options]
-                formato_esperado = (
-                    f"'{target_option_prefix}' contendo 'Lactalis'" if is_lactalis
-                    else (f"'{target_option_prefix}' contendo 'DPA'" if is_dpa else f"'{target_option_prefix}'")
-                )
-                log_callback(f"[F3] [Item {nro_cotacao_item}] ERRO: Nenhuma opção de cotação correspondente ao formato {formato_esperado} foi encontrada.", "ERRO")
-                log_callback(f"[F3] [Item {nro_cotacao_item}] Opções disponíveis: {available_options}", "DEBUG")
-                registrar_erro_em_planilha(dados_linha, f"Cotação não encontrada no formato esperado ({formato_esperado}).", log_callback, output_filepath)
-                return False
-
-        except Error as e:
-            # Erro: O campo de seleção não foi encontrado
-            motivo_erro = "O campo de seleção de cotação não foi encontrado após a pesquisa."
-            log_callback(f"[F3] [Item {nro_cotacao_item}] ERRO: {motivo_erro} {e}", "ERRO")
-            registrar_erro_em_planilha(dados_linha, motivo_erro, log_callback, output_filepath)
+        remetente_str = str(dados_linha.get("Remetente", ""))
+        company = get_company(remetente_str)
+        
+        ok_pesquisa = company.executar_pesquisa_cotacao(
+            page=page,
+            dados_linha=dados_linha,
+            nro_cotacao=nro_cotacao,
+            log_callback=log_callback,
+            atraso_etapas=atraso_etapas,
+            output_filepath=output_filepath
+        )
+        if not ok_pesquisa:
             return False
 
         # ETAPA 6: Substituir valor em "dados_complementoPedido"
         pause_event.wait()
-        remetente_str = str(dados_linha.get("Remetente", "")).lower()
-        is_lactalis_or_dpa = "lactalis" in remetente_str or "dpa" in remetente_str or "dairy partners" in remetente_str
-        valor_pedido = "DIARIA PARADO" if is_lactalis_or_dpa else str(nro_cotacao_item)
-        log_callback(f"[F3] [Item {nro_cotacao_item}] Etapa 6: Preenchendo Complemento do Pedido com '{valor_pedido}'...", "DEBUG")
-        page.fill('input[name="dados_complementoPedido"]', valor_pedido, force=True)
-        time.sleep(atraso_etapas)
+        valor_pedido = company.get_complemento_pedido(nro_cotacao_item)
+        if valor_pedido is not None:
+            log_callback(f"[F3] [Item {nro_cotacao_item}] Etapa 6: Preenchendo Complemento do Pedido com '{valor_pedido}'...", "DEBUG")
+            page.fill('input[name="dados_complementoPedido"]', valor_pedido, force=True)
+            time.sleep(atraso_etapas)
 
         # ETAPA 7: Clicar em "Avançar >>"
         pause_event.wait()
