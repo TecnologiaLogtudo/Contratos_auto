@@ -1,9 +1,9 @@
 import time
 from typing import Callable
 from playwright.sync_api import Page
-from .lactalis import LactalisCompany
+from .lactalis import LactalisBaseCompany
 
-class DPACompany(LactalisCompany):
+class DPACompany(LactalisBaseCompany):
     def match(self, remetente: str) -> bool:
         return "dpa" in remetente.lower() or "dairy partners" in remetente.lower()
 
