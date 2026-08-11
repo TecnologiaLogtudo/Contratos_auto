@@ -463,6 +463,20 @@ class AutomationManager:
                 job.status.state = "stopped"
                 job.status.message = "Parado pelo usuário"
         job.emit("Parada solicitada pelo usuário.", "AVISO")
+        
+        # Fecha os recursos do Playwright imediatamente para interromper qualquer requisição ou espera (ex: wait_for_selector)
+        # Isso faz com que a thread de execução do Playwright sofra uma exceção de interrupção instantânea e caia no 'finally' para salvar os logs
+        try:
+            if job.page:
+                job.page.close()
+        except Exception:
+            pass
+        try:
+            if job.browser_context:
+                job.browser_context.close()
+        except Exception:
+            pass
+            
         return job.status
 
 
