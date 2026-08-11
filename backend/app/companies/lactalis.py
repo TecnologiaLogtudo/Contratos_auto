@@ -194,25 +194,19 @@ class LactalisSpecialBaseCompany(LactalisBaseCompany):
             page.goto("https://logtudo.e-login.net/versoes/versao5.0/rotinas/c.php?id=transp_cotacoesFrete")
             time.sleep(atraso_etapas)
             
-            # Verifica se o botão "Filtrar" está visível. Se não estiver, o painel está colapsado e precisa ser expandido.
+            # Verifica se o painel de filtros está fechado (classe 'rg-busca-rapida-close' presente) e o expande.
             try:
-                page.wait_for_selector('input[name="busca_nro"]', state="attached", timeout=5000)
-                filtrar_selector = 'input[value="Filtrar"], button:has-text("Filtrar")'
-                if not page.locator(filtrar_selector).is_visible():
-                    log_callback(f"[Prep] [Item {nro_cotacao}] Painel de filtros colapsado. Tentando expandir...", "DEBUG")
-                    for selector in [".fa.fa-chevron-down", ".fa.fa-chevron-up"]:
-                        try:
-                            chevron = page.locator(selector).first
-                            if chevron.is_visible(timeout=500):
-                                chevron.click()
-                                time.sleep(atraso_etapas)
-                                if page.locator(filtrar_selector).is_visible(timeout=1000):
-                                    log_callback(f"[Prep] [Item {nro_cotacao}] Painel de filtros expandido com sucesso.", "DEBUG")
-                                    break
-                        except Exception:
-                            pass
+                page.wait_for_selector('.rg-busca-rapida', timeout=5000)
+                if page.locator(".rg-busca-rapida.rg-busca-rapida-close").is_visible(timeout=2000):
+                    log_callback(f"[Prep] [Item {nro_cotacao}] Painel de filtros fechado. Clicando para expandir...", "DEBUG")
+                    cabecalho = page.locator(".rg-busca-rapida__cabecalho")
+                    if cabecalho.is_visible():
+                        cabecalho.click()
+                    else:
+                        page.locator(".fa.fa-chevron-up").click()
+                    time.sleep(atraso_etapas)
             except Exception as e_filt:
-                log_callback(f"[Prep] [Item {nro_cotacao}] Aviso ao verificar/expandir painel de filtros: {e_filt}", "DEBUG")
+                log_callback(f"[Prep] [Item {nro_cotacao}] Aviso ao verificar/abrir painel de filtros: {e_filt}", "DEBUG")
 
             # Filtra pelo número da cotação (que é o Ravex na planilha)
             page.fill('input[name="busca_nro"]', str(nro_cotacao))
@@ -431,9 +425,18 @@ class LactalisSpecialBaseCompany(LactalisBaseCompany):
             
             # Tenta abrir filtros se fechados
             try:
-                page.locator(".fa.fa-chevron-up").click(timeout=2000)
+                if page.locator(".rg-busca-rapida.rg-busca-rapida-close").is_visible(timeout=2000):
+                    cabecalho = page.locator(".rg-busca-rapida__cabecalho")
+                    if cabecalho.is_visible():
+                        cabecalho.click()
+                    else:
+                        page.locator(".fa.fa-chevron-up").click()
+                    time.sleep(atraso_etapas)
             except Exception:
-                pass
+                try:
+                    page.locator(".fa.fa-chevron-up").click(timeout=2000)
+                except Exception:
+                    pass
                 
             # 3. Filtra pelo número da cotação (Ravex)
             page.fill('input[name="busca_nDoc"]', str(nro_cotacao))
