@@ -214,7 +214,7 @@ class LactalisSpecialBaseCompany(LactalisBaseCompany):
             page.click('input[value="Filtrar"], button:has-text("Filtrar")')
             time.sleep(atraso_etapas)
             
-            checkbox_selector = 'input[type="checkbox"][name="dados_selecionados[]"]'
+            checkbox_selector = 'input[type="checkbox"][name="id"]'
             page.wait_for_selector(checkbox_selector, timeout=10000)
             
             id_val = page.locator(checkbox_selector).first.get_attribute("value")
