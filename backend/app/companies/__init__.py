@@ -17,8 +17,14 @@ COMPANIES = [
     LatamCompany()
 ]
 
+import unicodedata
+
+def _remover_acentos(texto: str) -> str:
+    nfkd_form = unicodedata.normalize('NFKD', texto)
+    return "".join([c for c in nfkd_form if not unicodedata.combining(c)])
+
 def get_company(remetente: str) -> BaseCompany:
-    remetente_clean = str(remetente or "").strip().lower()
+    remetente_clean = _remover_acentos(str(remetente or "").strip().lower())
     for company in COMPANIES:
         if company.match(remetente_clean):
             return company
