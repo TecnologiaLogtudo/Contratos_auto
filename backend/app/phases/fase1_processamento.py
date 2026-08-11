@@ -353,8 +353,10 @@ def _processar_nome_placa(raw_string: any, line_num: int, log_callback: Callable
     
     # --- ETAPA 4: Limpeza do Nome ---
     if nome_bruto:
+        # 0. Remove lixos comuns do nome (pernoite, diária garantida, nf-123, sr-123, números longos soltos)
+        nome_limpo = re.sub(r'\b(pernoite|di[aá]ria\s+garantida|nf\s*-?\s*\d+|sr\s*-?\s*\d+|\d{5,})\b', '', nome_bruto, flags=re.IGNORECASE)
         # 1. Remove prefixos de tempo como "as" ou "às" que precedem uma hora.
-        nome_limpo = re.sub(r'(as|às)\s+(?=\d{1,2}:\d{2}|\d{1,2}h\d{2}|\d{1,2}h(?!\d)|h(?!\w))', '', nome_bruto, flags=re.IGNORECASE)
+        nome_limpo = re.sub(r'(as|às)\s+(?=\d{1,2}:\d{2}|\d{1,2}h\d{2}|\d{1,2}h(?!\d)|h(?!\w))', '', nome_limpo, flags=re.IGNORECASE)
         # 2. Remove os padrões de tempo restantes e outras palavras-chave.
         nome_limpo = NOME_CLEANUP_REGEX.sub('', nome_limpo)
         # 3. Remove hífens
