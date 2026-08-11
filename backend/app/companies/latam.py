@@ -90,3 +90,9 @@ class LatamCompany(BaseCompany):
             return False
             
         return True
+
+    def get_termo_busca_perfil(self, cidade_planilha: str) -> str:
+        cidade_lower = cidade_planilha.lower()
+        if "vitória da conquista" in cidade_lower or "vitoria da conquista" in cidade_lower:
+            return "vitoria"
+        return cidade_planilha
