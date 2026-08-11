@@ -194,6 +194,12 @@ class LactalisSpecialBaseCompany(LactalisBaseCompany):
             page.goto("https://logtudo.e-login.net/versoes/versao5.0/rotinas/c.php?id=transp_cotacoesFrete")
             time.sleep(atraso_etapas)
             
+            # Tenta abrir filtros se fechados
+            try:
+                page.locator(".fa.fa-chevron-up").click(timeout=2000)
+            except Exception:
+                pass
+
             # Filtra pelo número da cotação (que é o Ravex na planilha)
             page.fill('input[name="busca_nro"]', str(nro_cotacao))
             time.sleep(atraso_etapas)
