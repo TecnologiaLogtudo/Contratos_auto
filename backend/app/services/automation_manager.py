@@ -157,6 +157,35 @@ def init_db() -> None:
         print(f"[DB] Erro ao inicializar banco de dados SQLite: {e}")
 
 
+class StopRequestedException(BaseException):
+    pass
+
+
+class JobPauseEvent:
+    def __init__(self, stop_event: threading.Event):
+        self._event = threading.Event()
+        self._stop_event = stop_event
+
+    def wait(self, timeout: Optional[float] = None) -> bool:
+        if self._stop_event.is_set():
+            raise StopRequestedException("Parada solicitada pelo usuário.")
+        while not self._event.is_set():
+            if self._stop_event.is_set():
+                raise StopRequestedException("Parada solicitada pelo usuário.")
+            self._event.wait(timeout=0.1)
+        if self._stop_event.is_set():
+            raise StopRequestedException("Parada solicitada pelo usuário.")
+        return True
+
+    def is_set(self) -> bool:
+        return self._event.is_set()
+
+    def set(self) -> None:
+        self._event.set()
+
+    def clear(self) -> None:
+        self._event.clear()
+
 
 @dataclass
 class JobRuntime:
@@ -184,6 +213,9 @@ class JobRuntime:
     browser_logs: list[dict] = field(default_factory=list)
     artifacts: list[dict] = field(default_factory=list)
     start_time: float = field(default_factory=time.time)
+
+    def __post_init__(self) -> None:
+        self.pause_event = JobPauseEvent(self.stop_event)
 
     def emit(self, message: str, level: str = "INFO") -> None:
         with self.lock:
@@ -930,16 +962,22 @@ class AutomationManager:
             else:
                 job.emit("Automação concluída.", "SUCESSO")
 
-        except Exception as e:
-            try:
-                job.take_screenshot("erro_critico_execucao")
-            except Exception:
-                pass
-            job.emit(f"Erro crítico: {e}", "ERRO")
-            job.emit(traceback.format_exc(), "DEBUG")
-            with job.lock:
-                job.status.state = "error"
-                job.status.message = str(e)
+        except BaseException as e:
+            if isinstance(e, StopRequestedException):
+                job.emit("Execução interrompida pelo usuário.", "AVISO")
+                with job.lock:
+                    job.status.state = "stopped"
+                    job.status.message = "Parado pelo usuário"
+            else:
+                try:
+                    job.take_screenshot("erro_critico_execucao")
+                except Exception:
+                    pass
+                job.emit(f"Erro crítico: {e}", "ERRO")
+                job.emit(traceback.format_exc(), "DEBUG")
+                with job.lock:
+                    job.status.state = "error"
+                    job.status.message = str(e)
         finally:
             print(f"[JOB {job.status.id}] Iniciando finalização e persistência...")
             video_path = None
