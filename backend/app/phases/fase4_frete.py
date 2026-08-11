@@ -124,6 +124,16 @@ def preencher_frete(
         pause_event.wait()
         log_callback(f"[F4] [Item {nro_cotacao}] Etapa 2: Preenchendo Cidade '{cidade}'...", "DEBUG")
 
+        # Garante que a opção 'Início/Fim da Prestação' está marcada para tornar visível os campos de Cidade
+        try:
+            inicio_fim_checkbox = page.locator('input[name="dados_definirInicioFimPrestacao[]"]')
+            if inicio_fim_checkbox.is_visible(timeout=2000) and not inicio_fim_checkbox.is_checked():
+                log_callback(f"[F4] [Item {nro_cotacao}] Habilitando 'Início/Fim da Prestação'...", "DEBUG")
+                inicio_fim_checkbox.check()
+                time.sleep(atraso_etapas)
+        except Exception as e_chk:
+            log_callback(f"[F4] [Item {nro_cotacao}] Aviso ao verificar/marcar checkbox de Início/Fim da Prestação: {e_chk}", "DEBUG")
+
         def _perform_city_search_and_selection(city_name: str) -> bool:
             try:
                 # Garante que nenhum popup esteja cobrindo os campos antes de interagir
