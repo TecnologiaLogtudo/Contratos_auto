@@ -252,21 +252,10 @@ def _ler_com_xlrd(filepath: str, ws_out: openpyxl.worksheet.worksheet.Worksheet,
 # --- NOVAS FUNÇÕES HELPER (FASE 1) ---
 
 def _processar_remetente(raw_string: any) -> str:
-    """Extrai o número inicial da string do remetente."""
+    """Retorna a string do remetente limpa e completa."""
     if not raw_string or not isinstance(raw_string, str):
         return "N/A"
-    
-    # Remove espaços em branco no início e no fim
-    cleaned_string = str(raw_string).strip()
-    
-    # Pega a primeira parte antes do " - "
-    parts = cleaned_string.split(' - ')
-    
-    if parts:
-        # Retorna a primeira parte, que deve ser a numeração
-        return parts[0].strip()
-    
-    return "N/A"
+    return str(raw_string).strip()
 
 def _remover_acentos(texto: str) -> str:
     """Remove acentos de uma string."""

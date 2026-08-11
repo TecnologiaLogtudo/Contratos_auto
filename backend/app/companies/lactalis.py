@@ -7,7 +7,8 @@ from .base_company import BaseCompany
 
 class LactalisBaseCompany(BaseCompany):
     def match(self, remetente: str) -> bool:
-        return "lactalis" in remetente.lower()
+        rem = remetente.lower()
+        return "lactalis" in rem or "43.340.312" in rem or "43340312" in rem
 
     def require_data_pagamento(self) -> bool:
         return False
@@ -30,7 +31,7 @@ class LactalisBaseCompany(BaseCompany):
 class LactalisDiariaParadaCompany(LactalisBaseCompany):
     def match(self, remetente: str) -> bool:
         rem = remetente.lower()
-        return "lactalis" in rem and not any(kw in rem for kw in ["pernoite", "diaria em rota", "diaria no cliente", "diaria garantida"])
+        return super().match(remetente) and not any(kw in rem for kw in ["pernoite", "diaria em rota", "diaria no cliente", "diaria garantida"])
 
     def match_cotacao_opcao(self, option_text: str, nro_cotacao: str) -> bool:
         return option_text.strip().startswith(f"{nro_cotacao} /") and "lactalis" in option_text.lower()
@@ -47,8 +48,8 @@ class LactalisDiariaParadaCompany(LactalisBaseCompany):
         try:
             log_callback(f"[F4] [Item {nro_cotacao}] Aplicando regra de destinatário LACTALIS...", "DEBUG")
             
-            # 1. Remetente: Pesquisar 'Lactalis'
-            page.fill('input[name="pesquisa_enderecoRemetente_id"]', 'Lactalis')
+            # 1. Remetente: Pesquisar '43.340.312/0006-61'
+            page.fill('input[name="pesquisa_enderecoRemetente_id"]', '43.340.312/0006-61')
             time.sleep(atraso_etapas)
             page.click('i[name="botaoPesquisa_enderecoRemetente_id"]')
             
@@ -59,9 +60,9 @@ class LactalisDiariaParadaCompany(LactalisBaseCompany):
             options_remetente = page.locator(remetente_selector).locator("option").all()
             remetente_value = None
             for opt in options_remetente:
-                text = opt.inner_text().strip()
-                if "43.340.312/0006-61" in text:
-                    remetente_value = opt.get_attribute("value")
+                val = opt.get_attribute("value")
+                if val and val != "":
+                    remetente_value = val
                     break
             
             if remetente_value:
@@ -73,8 +74,8 @@ class LactalisDiariaParadaCompany(LactalisBaseCompany):
                 
             time.sleep(atraso_etapas)
 
-            # 2. Destinatário: Pesquisar 'Logtudo'
-            page.fill('input[name="pesquisa_enderecoDestinatario_id"]', 'Logtudo')
+            # 2. Destinatário: Pesquisar '20.511.709/0001-69'
+            page.fill('input[name="pesquisa_enderecoDestinatario_id"]', '20.511.709/0001-69')
             time.sleep(atraso_etapas)
             page.click('i[name="botaoPesquisa_enderecoDestinatario_id"]')
             
@@ -85,9 +86,9 @@ class LactalisDiariaParadaCompany(LactalisBaseCompany):
             options_destinatario = page.locator(destinatario_selector).locator("option").all()
             destinatario_value = None
             for opt in options_destinatario:
-                text = opt.inner_text().strip()
-                if "20.511.709/0001-69" in text:
-                    destinatario_value = opt.get_attribute("value")
+                val = opt.get_attribute("value")
+                if val and val != "":
+                    destinatario_value = val
                     break
                     
             if destinatario_value:
@@ -491,9 +492,9 @@ class LactalisSpecialBaseCompany(LactalisBaseCompany):
 class LactalisPernoiteCompany(LactalisSpecialBaseCompany):
     def match(self, remetente: str) -> bool:
         rem = remetente.lower()
-        return "lactalis" in rem and any(kw in rem for kw in ["pernoite", "diaria em rota", "diaria no cliente"])
+        return super().match(remetente) and any(kw in rem for kw in ["pernoite", "diaria em rota", "diaria no cliente"])
 
 class LactalisDiariaGarantidaCompany(LactalisSpecialBaseCompany):
     def match(self, remetente: str) -> bool:
         rem = remetente.lower()
-        return "lactalis" in rem and "diaria garantida" in rem
+        return super().match(remetente) and "diaria garantida" in rem

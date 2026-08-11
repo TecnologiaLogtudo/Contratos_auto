@@ -280,12 +280,15 @@ def preencher_contrato_frete(
                 registrar_erro_em_planilha(dados_linha, motivo_erro, log_callback, output_filepath)
                 return False
 
+            # Se vier o formato completo 'CNPJ - Nome', busca apenas pelo CNPJ para evitar erros de busca no e-Login
+            remetente_busca = remetente.split(' - ')[0].strip() if ' - ' in remetente else remetente
+
             try:
                 input_selector = 'input[name="pesquisa_dados_enderecoRemetenteContrato_id"]'
                 button_selector = 'i[name="botaoPesquisa_dados_enderecoRemetenteContrato_id"]'
 
-                log_callback(f"[F5] [Item {nro_cotacao}] Preenchendo campo Remetente com '{remetente}'...", "DEBUG")
-                page.fill(input_selector, remetente)
+                log_callback(f"[F5] [Item {nro_cotacao}] Preenchendo campo Remetente com '{remetente_busca}'...", "DEBUG")
+                page.fill(input_selector, remetente_busca)
                 time.sleep(atraso_etapas)
 
                 log_callback(f"[F5] [Item {nro_cotacao}] Clicando no botão de pesquisa do Remetente...", "DEBUG")
