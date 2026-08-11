@@ -67,6 +67,28 @@ def _preencher_campo_se_editavel(
 # Remetido DPA sync delegado para backend/app/companies/
 
 
+def _fechar_popups_alerta(page: Page, log_callback: Callable, nro_cotacao: str) -> None:
+    selectors = [
+        'button:has-text("OK")',
+        'input[type="button"][value="OK"]',
+        'input[type="submit"][value="OK"]',
+        'a:has-text("OK")',
+        '.swal2-confirm',
+        '.ui-dialog-buttonpane button',
+        '.modal-footer button'
+    ]
+    for sel in selectors:
+        try:
+            loc = page.locator(sel)
+            if loc.is_visible(timeout=500):
+                log_callback(f"[F4] [Item {nro_cotacao}] Pop-up de alerta detectado ({sel}). Fechando...", "AVISO")
+                loc.click()
+                page.wait_for_timeout(500)
+                break
+        except Exception:
+            pass
+
+
 def preencher_frete(
     page: Page, 
     dados_linha: Dict[str, str], 
@@ -85,6 +107,9 @@ def preencher_frete(
         nome_motorista = dados_linha.get("Nome", "NOME NÃO ENCONTRADO")
         log_callback(f"[F4] [Item {nro_cotacao}] --- INÍCIO: DADOS DO FRETE ---", "FASE")
 
+        # Fecha popups iniciais (ex: aviso de NF duplicada) se existirem
+        _fechar_popups_alerta(page, log_callback, nro_cotacao)
+
         # ETAPA 1: Destinatário (buscar pelo CNPJ do Remetente e sincronizar)
         pause_event.wait()
         
@@ -101,6 +126,8 @@ def preencher_frete(
 
         def _perform_city_search_and_selection(city_name: str) -> bool:
             try:
+                # Garante que nenhum popup esteja cobrindo os campos antes de interagir
+                _fechar_popups_alerta(page, log_callback, nro_cotacao)
                 page.fill('input[name="pesquisa_cMunIni"]', city_name)
                 time.sleep(atraso_etapas)
                 page.click('i[name="botaoPesquisa_cMunIni"]')
