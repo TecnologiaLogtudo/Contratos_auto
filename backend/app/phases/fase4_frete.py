@@ -289,11 +289,14 @@ def preencher_frete(
         pause_event.wait()
         log_callback(f"[F4] [Item {nro_cotacao}] Etapa 7: Selecionando Composição do Frete...", "DEBUG")
         regra_frete_id = company.get_regra_frete_id()
-        if regra_frete_id == "120":
-            log_callback(f"[F4] [Item {nro_cotacao}] Remetente Lactalis/DPA detectado. Selecionando Cotação Varejo (120)...", "DEBUG")
+        if regra_frete_id == "146":
+            log_callback(f"[F4] [Item {nro_cotacao}] Remetente Lactalis/DPA detectado. Selecionando Cotação Varejo (146)...", "DEBUG")
         else:
             log_callback(f"[F4] [Item {nro_cotacao}] Selecionando Não realiza cálculos ({regra_frete_id})...", "DEBUG")
-        page.select_option('select[name="dados_regraFrete_id"]', value=regra_frete_id)
+        try:
+            page.select_option('select[name="dados_regraFrete_id"]', value=regra_frete_id, timeout=3000)
+        except Exception as e:
+            log_callback(f"[F4] [Item {nro_cotacao}] AVISO: Não foi possível alterar a Regra de Frete (campo bloqueado/indisponível). Ignorando.", "AVISO")
         time.sleep(atraso_etapas)
 
         # ETAPA 8: Apagar valores
@@ -307,7 +310,7 @@ def preencher_frete(
         _preencher_campo_se_editavel(page, 'input[name="dados_totalPrestacao"]', "0,00", log_callback, nro_cotacao, atraso_etapas)
 
         # ETAPA 8.5: Regra Lactalis/DPA - Preencher Frete Terceiros
-        if company.get_regra_frete_id() == "120":
+        if company.get_regra_frete_id() == "146":
             pause_event.wait()
             log_callback(f"[F4] [Item {nro_cotacao}] Etapa 8.5: Preenchendo Frete Terceiros para Lactalis/DPA...", "DEBUG")
             company.preencher_frete_terceiros(page, dados_linha, log_callback, nro_cotacao, atraso_etapas)

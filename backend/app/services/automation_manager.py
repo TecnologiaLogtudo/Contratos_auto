@@ -892,7 +892,7 @@ class AutomationManager:
 
 
             dados_planilha = self._ler_dados_planilha(job)
-            dados_para_processar = [item for item in dados_planilha if item.get("Status") == "Pendente"]
+            dados_para_processar = [item for item in dados_planilha if str(item.get("Status", "")).strip().lower() == "pendente"]
             if not dados_para_processar:
                 job.emit("Nenhum item pendente encontrado.", "AVISO")
                 with job.lock:
@@ -1071,20 +1071,20 @@ class AutomationManager:
         self._sleep_or_stop(job, atraso_fases)
 
     def _is_planilha_tratada(self, filepath: str) -> bool:
-        headers_esperados = ["Nro cotação", "Categoria veículo", "Cidade", "UF", "Nome", "Placa", "Data pagamento", "Viagem extra", "Remetente", "Status"]
+        headers_esperados = ["Nro cotação", "Categoria veículo", "Cidade", "UF", "Nome", "Placa", "Data pagamento", "Viagem extra", "Remetente", "Validade", "Frete a pagar", "Frete negociado", "Status"]
         path = Path(filepath)
         if path.suffix.lower() == ".xls":
             wb = xlrd.open_workbook(filepath, formatting_info=False)
             sheet = wb.sheet_by_index(0)
             headers_encontrados = sheet.row_values(0) if sheet.nrows > 0 else []
-            headers_limpos = [h for h in headers_encontrados if h is not None and str(h).strip() != ""]
+            headers_limpos = [str(h).strip() for h in headers_encontrados if h is not None and str(h).strip() != ""]
             return headers_limpos == headers_esperados
 
         workbook = openpyxl.load_workbook(filepath, read_only=True)
         try:
             sheet = workbook.active
             headers_encontrados = [cell.value for cell in sheet[1]]
-            headers_limpos = [h for h in headers_encontrados if h is not None]
+            headers_limpos = [str(h).strip() for h in headers_encontrados if h is not None and str(h).strip() != ""]
             return headers_limpos == headers_esperados
         finally:
             workbook.close()
@@ -1094,7 +1094,7 @@ class AutomationManager:
             return []
         wb = openpyxl.load_workbook(job.planilha_processada_path, data_only=True)
         ws = wb.active
-        headers = [cell.value for cell in ws[1] if cell.value is not None]
+        headers = [str(cell.value).strip() if cell.value is not None else f"Coluna_{i}" for i, cell in enumerate(ws[1])]
         dados = []
         for row in ws.iter_rows(min_row=2, values_only=True):
             if all(cell is None for cell in row):

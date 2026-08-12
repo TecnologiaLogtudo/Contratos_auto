@@ -150,7 +150,7 @@ class LactalisDiariaParadaCompany(LactalisBaseCompany):
         return "DIARIA PARADO"
 
     def get_regra_frete_id(self) -> str:
-        return "120"  # Cotação Varejo (120)
+        return "146"  # Cotação Varejo (146)
 
     def _formatar_moeda_lactalis(self, frete_negociado, frete_pagar) -> str:
         def parse_float(v):
@@ -204,12 +204,12 @@ class LactalisSpecialBaseCompany(LactalisBaseCompany):
     def get_complemento_pedido(self, nro_cotacao_item: str, dados_linha: Dict[str, str] = None) -> str | None:
         if dados_linha:
             remetente = dados_linha.get("Remetente", "").lower()
-            if "pernoite" in remetente:
-                return "Pernoite"
+            if "pernoite" in remetente or "diaria no cliente" in remetente or "diária no cliente" in remetente:
+                return "Diaria no cliente"
             elif "diaria garantida" in remetente or "diária garantida" in remetente:
-                return "Diaria garantida"
+                return "Diaria Garantida"
             elif "diaria em rota" in remetente or "diária em rota" in remetente:
-                return "Diaria em Rota"
+                return "Diaria no cliente"
         return str(nro_cotacao_item)
 
     def preparar_dados_cotacao(self, page: Page, dados_linha: Dict[str, str], log_callback: Callable, atraso_etapas: float) -> bool:
@@ -281,7 +281,6 @@ class LactalisSpecialBaseCompany(LactalisBaseCompany):
             if not nro_pedido:
                 log_callback(f"[Prep] [Item {nro_cotacao}] ERRO: Nº Pedido Cliente não encontrado nos detalhes da cotação.", "ERRO")
                 return False
-                
             log_callback(f"[Prep] [Item {nro_cotacao}] Nº Pedido Cliente extraído: '{nro_pedido}'", "DEBUG")
             dados_linha["extracted_nro_pedido"] = nro_pedido
             
