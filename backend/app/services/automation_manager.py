@@ -965,6 +965,21 @@ class AutomationManager:
                 self._sleep_or_stop(job, cfg.atraso_fases)
                 self._update_progress(job, idx, total, f"Cotação {nro} concluída")
 
+                # Regra: Após concluir com sucesso o item, o fluxo terminou na página de conhecimento.
+                # Para fluxos que dependem de cotação (ex: Lactalis Diária em Rota), força a 
+                # navegação imediata para a tela de cotações para prosseguir com o próximo item.
+                if hasattr(company, "preparar_dados_cotacao"):
+                    job.emit(f"Transição para o próximo item: Navegando da página de Conhecimento para a página de Cotações...", "INFO")
+                    try:
+                        job.page.goto("about:blank", wait_until="load")
+                    except:
+                        pass
+                    try:
+                        job.page.goto("https://logtudo.e-login.net/versoes/versao5.0/rotinas/c.php?id=transp_cotacoesFrete", wait_until="load", timeout=60000)
+                        time.sleep(cfg.atraso_etapas)
+                    except Exception as trans_err:
+                        job.emit(f"Aviso ao transicionar para Cotações: {trans_err}", "AVISO")
+
             with job.lock:
                 if job.status.state != "stopped":
                     job.status.state = "completed"

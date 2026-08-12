@@ -5,6 +5,8 @@ from typing import Callable, Dict
 from playwright.sync_api import Page
 from .base_company import BaseCompany
 
+_page_nfs = {}
+
 class LactalisBaseCompany(BaseCompany):
     def match(self, remetente: str) -> bool:
         rem = remetente.lower()
@@ -27,20 +29,6 @@ class LactalisBaseCompany(BaseCompany):
 
     def get_ncm_valor(self) -> str:
         return "0403."
-
-class LactalisDiariaParadaCompany(LactalisBaseCompany):
-    def match(self, remetente: str) -> bool:
-        rem = remetente.lower()
-        return super().match(remetente) and not any(kw in rem for kw in ["pernoite", "diaria em rota", "diaria no cliente", "diaria garantida"])
-
-    def match_cotacao_opcao(self, option_text: str, nro_cotacao: str) -> bool:
-        return option_text.strip().startswith(f"{nro_cotacao} /") and "lactalis" in option_text.lower()
-
-    def format_cotacao_erro_msg(self, target_option_prefix: str) -> str:
-        return f"'{target_option_prefix}' contendo 'Lactalis'"
-
-    def get_complemento_pedido(self, nro_cotacao_item: str) -> str:
-        return "DIARIA PARADO"
 
     def sincronizar_remetente_destinatario(
         self, page: Page, nro_cotacao: str, log_callback: Callable, atraso_etapas: float
@@ -103,6 +91,64 @@ class LactalisDiariaParadaCompany(LactalisBaseCompany):
             log_callback(f"[F4] [Item {nro_cotacao}] ERRO na Etapa 1 (Remetente/Destinatário LACTALIS): {e}", "ERRO")
             return False
 
+    def get_data_programada(self, dados_linha: Dict[str, str], data_pagamento: str, log_callback: Callable) -> str | None:
+        validade_raw = dados_linha.get("Validade")
+        nro_cotacao = dados_linha.get("Nro cotação", "N/A")
+        return self._calcular_data_programada_lactalis(validade_raw, nro_cotacao, log_callback)
+
+    def _calcular_data_programada_lactalis(self, validade_raw: str, nro_cotacao: str, log_callback: Callable) -> str | None:
+        if validade_raw and str(validade_raw).strip():
+            try:
+                import datetime as dt_module
+                if isinstance(validade_raw, dt_module.datetime):
+                    val_date = validade_raw
+                elif isinstance(validade_raw, dt_module.date):
+                    val_date = dt_module.datetime(validade_raw.year, validade_raw.month, validade_raw.day)
+                else:
+                    validade_str = str(validade_raw).strip()
+                    # Tenta capturar DD/MM/YYYY ou YYYY-MM-DD
+                    match_pt = re.search(r'(\d{2})[-/](\d{2})[-/](\d{4})', validade_str)
+                    match_en = re.search(r'(\d{4})[-/](\d{2})[-/](\d{2})', validade_str)
+                    
+                    if match_pt:
+                        val_date = datetime(int(match_pt.group(3)), int(match_pt.group(2)), int(match_pt.group(1)))
+                    elif match_en:
+                        val_date = datetime(int(match_en.group(1)), int(match_en.group(2)), int(match_en.group(3)))
+                    else:
+                        raise ValueError(f"Formato desconhecido: {validade_str}")
+                        
+                novo_mes = val_date.month + 1
+                novo_ano = val_date.year
+                if novo_mes > 12:
+                    novo_mes = 1
+                    novo_ano += 1
+                    
+                novo_dia = 5 if val_date.day <= 15 else 20
+                data_final = f"{novo_dia:02d}/{novo_mes:02d}/{novo_ano}"
+                log_callback(f"[F5] [Item {nro_cotacao}] Regra Lactalis aplicada: Validade {val_date.strftime('%d/%m/%Y')} -> Programada {data_final}.", "DEBUG")
+                return data_final
+            except Exception as e:
+                import traceback
+                tb = traceback.format_exc()
+                log_callback(f"[F5] [Item {nro_cotacao}] AVISO: Falha ao calcular Lactalis pela Validade '{validade_raw}'. Erro: {e}. Traceback: {tb}", "AVISO")
+                return None
+        return None
+
+
+class LactalisDiariaParadaCompany(LactalisBaseCompany):
+    def match(self, remetente: str) -> bool:
+        rem = remetente.lower()
+        return super().match(remetente) and not any(kw in rem for kw in ["pernoite", "diaria em rota", "diaria no cliente", "diaria garantida"])
+
+    def match_cotacao_opcao(self, option_text: str, nro_cotacao: str) -> bool:
+        return option_text.strip().startswith(f"{nro_cotacao} /") and "lactalis" in option_text.lower()
+
+    def format_cotacao_erro_msg(self, target_option_prefix: str) -> str:
+        return f"'{target_option_prefix}' contendo 'Lactalis'"
+
+    def get_complemento_pedido(self, nro_cotacao_item: str, dados_linha: Dict[str, str] = None) -> str:
+        return "DIARIA PARADO"
+
     def get_regra_frete_id(self) -> str:
         return "120"  # Cotação Varejo (120)
 
@@ -152,46 +198,32 @@ class LactalisDiariaParadaCompany(LactalisBaseCompany):
             data_str = str(data_validade_raw)
         return f"DIARIA PARADA {data_str}"
 
-    def get_data_programada(self, dados_linha: Dict[str, str], data_pagamento: str, log_callback: Callable) -> str | None:
-        validade_raw = dados_linha.get("Validade")
-        nro_cotacao = dados_linha.get("Nro cotação", "N/A")
-        return self._calcular_data_programada_lactalis(validade_raw, nro_cotacao, log_callback)
-
-    def _calcular_data_programada_lactalis(self, validade_raw: str, nro_cotacao: str, log_callback: Callable) -> str | None:
-        if validade_raw and str(validade_raw).strip():
-            try:
-                if isinstance(validade_raw, datetime):
-                    val_date = validade_raw
-                else:
-                    match = re.search(r'(\d{2})[-/](\d{2})[-/](\d{4})', str(validade_raw))
-                    if match:
-                        val_date = datetime(int(match.group(3)), int(match.group(2)), int(match.group(1)))
-                    else:
-                        raise ValueError("Formato desconhecido")
-                        
-                novo_mes = val_date.month + 1
-                novo_ano = val_date.year
-                if novo_mes > 12:
-                    novo_mes = 1
-                    novo_ano += 1
-                    
-                novo_dia = 5 if val_date.day <= 15 else 20
-                data_final = f"{novo_dia:02d}/{novo_mes:02d}/{novo_ano}"
-                log_callback(f"[F5] [Item {nro_cotacao}] Regra Lactalis aplicada: Validade {val_date.strftime('%d/%m/%Y')} -> Programada {data_final}.", "DEBUG")
-                return data_final
-            except Exception as e:
-                log_callback(f"[F5] [Item {nro_cotacao}] AVISO: Falha ao calcular Lactalis pela Validade '{validade_raw}'. Erro: {e}", "AVISO")
-                return None
-        return None
 
 class LactalisSpecialBaseCompany(LactalisBaseCompany):
+
+    def get_complemento_pedido(self, nro_cotacao_item: str, dados_linha: Dict[str, str] = None) -> str | None:
+        if dados_linha:
+            remetente = dados_linha.get("Remetente", "").lower()
+            if "pernoite" in remetente:
+                return "Pernoite"
+            elif "diaria garantida" in remetente or "diária garantida" in remetente:
+                return "Diaria garantida"
+            elif "diaria em rota" in remetente or "diária em rota" in remetente:
+                return "Diaria em Rota"
+        return str(nro_cotacao_item)
+
     def preparar_dados_cotacao(self, page: Page, dados_linha: Dict[str, str], log_callback: Callable, atraso_etapas: float) -> bool:
         try:
             nro_cotacao = dados_linha.get("Nro cotação", "N/A")
             log_callback(f"[Prep] [Item {nro_cotacao}] Acessando listagem de cotações para extrair metadados...", "DEBUG")
             
             # Acessa a página de Cotações
-            page.goto("https://logtudo.e-login.net/versoes/versao5.0/rotinas/c.php?id=transp_cotacoesFrete")
+            # Garante que a automação saia da página de Conhecimento do loop anterior antes de carregar Cotações
+            try:
+                page.goto("about:blank", wait_until="load")
+            except:
+                pass
+            page.goto("https://logtudo.e-login.net/versoes/versao5.0/rotinas/c.php?id=transp_cotacoesFrete", wait_until="load", timeout=60000)
             time.sleep(atraso_etapas)
             
             # Verifica se o painel de filtros está fechado (classe 'rg-busca-rapida-close' presente) e o expande.
@@ -214,6 +246,13 @@ class LactalisSpecialBaseCompany(LactalisBaseCompany):
             page.click('input[value="Filtrar"], button:has-text("Filtrar")')
             time.sleep(atraso_etapas)
             
+            # Novo: verifica se apareceu o erro de status da cotação
+            error_locator = page.locator('div.error p:has-text("Status da cotação não permite editar a mesma")')
+            if error_locator.is_visible():
+                motivo_erro = "Status da cotação não permite edição."
+                log_callback(f"[Prep] [Item {nro_cotacao}] ERRO: {motivo_erro}", "ERRO")
+                return False
+            
             checkbox_selector = 'input[type="checkbox"][name="id"]'
             page.wait_for_selector(checkbox_selector, timeout=10000)
             
@@ -229,6 +268,14 @@ class LactalisSpecialBaseCompany(LactalisBaseCompany):
             page.goto(detail_url)
             time.sleep(atraso_etapas)
             
+            # Verifica novamente se apareceu erro ao carregar a página de detalhes
+            if error_locator.is_visible():
+                motivo_erro = "Status da cotação não permite edição."
+                log_callback(f"[Prep] [Item {nro_cotacao}] ERRO: {motivo_erro}", "ERRO")
+                return False
+            
+            # Wait for the order number field to be present before extracting
+            page.wait_for_selector('input[name="dados_nroPedidoCliente"]', timeout=20000)
             # 1. Extrai o número do pedido real do cliente (dados_nroPedidoCliente)
             nro_pedido = page.input_value('input[name="dados_nroPedidoCliente"]')
             if not nro_pedido:
@@ -307,9 +354,6 @@ class LactalisSpecialBaseCompany(LactalisBaseCompany):
     def format_cotacao_erro_msg(self, target_option_prefix: str) -> str:
         return f"'{target_option_prefix}'"
 
-    def get_complemento_pedido(self, nro_cotacao_item: str) -> str | None:
-        # De acordo com o codegen da Lactalis Pernoite/Diária Garantida, o complemento não é preenchido
-        return None
 
     def executar_pesquisa_cotacao(
         self,
@@ -366,6 +410,7 @@ class LactalisSpecialBaseCompany(LactalisBaseCompany):
             nf_val = dados_linha.get("extracted_nf")
             if nf_val:
                 log_callback(f"[F3] Pesquisando Nota Fiscal '{nf_val}'...", "DEBUG")
+                _page_nfs[page] = str(nf_val)
                 page.fill('#pswobj3', str(nf_val))
                 time.sleep(atraso_etapas)
                 page.click('.swrepp > td > em > .fa-solid')
@@ -381,21 +426,15 @@ class LactalisSpecialBaseCompany(LactalisBaseCompany):
             registrar_erro_em_planilha(dados_linha, motivo_erro, log_callback, output_filepath)
             return False
 
-    def sincronizar_remetente_destinatario(
-        self, page: Page, nro_cotacao: str, log_callback: Callable, atraso_etapas: float
-    ) -> bool:
-        # Ao abrir o conhecimento a partir da cotação nos detalhes,
-        # o sistema já preenche automaticamente o remetente e destinatário
-        log_callback(f"[F4] [Item {nro_cotacao}] Conhecimento aberto via cotação detalhe. Remetente e Destinatário já preenchidos.", "INFO")
-        return True
+
 
     def get_regra_frete_id(self) -> str:
         # Conforme o codegen, a regra do frete não é alterada (mantém padrão ou Não realiza cálculo)
         return "40"
 
     def get_observacao_pv(self, dados_linha: Dict[str, str], nro_cotacao: str) -> str:
-        # A observação PV deve ser preenchida com o número da cotação (Ravex)
-        return str(nro_cotacao)
+        # A observação PV deve ser preenchida com os dados extraídos do campo observação interna da cotação
+        return dados_linha.get("extracted_obs_interna", str(nro_cotacao))
 
     def preencher_campos_especificos_fase4(
         self, page: Page, dados_linha: Dict[str, str], nro_cotacao: str, log_callback: Callable, atraso_etapas: float
@@ -412,57 +451,6 @@ class LactalisSpecialBaseCompany(LactalisBaseCompany):
                 time.sleep(atraso_etapas)
         except Exception as e:
             log_callback(f"[F4] [Item {nro_cotacao}] Aviso ao preencher Senha Ravex: {e}", "DEBUG")
-
-    def transicionar_para_fase5(self, page: Page, nro_cotacao: str, log_callback: Callable, atraso_etapas: float) -> bool:
-        try:
-            # 1. Clica em Salvar no formulário de conhecimento
-            log_callback(f"[F4] [Item {nro_cotacao}] Clicando em Salvar Conhecimento...", "DEBUG")
-            page.get_by_role("button", name="Salvar").click()
-            
-            # 2. Aguarda ir para a listagem
-            log_callback(f"[F4] [Item {nro_cotacao}] Aguardando retorno para a listagem...", "DEBUG")
-            page.wait_for_selector('input[name="busca_nDoc"]', timeout=30000)
-            
-            # Tenta abrir filtros se fechados
-            try:
-                if page.locator(".rg-busca-rapida.rg-busca-rapida-close").is_visible(timeout=2000):
-                    cabecalho = page.locator(".rg-busca-rapida__cabecalho")
-                    if cabecalho.is_visible():
-                        cabecalho.click()
-                    else:
-                        page.locator(".fa.fa-chevron-up").click()
-                    time.sleep(atraso_etapas)
-            except Exception:
-                try:
-                    page.locator(".fa.fa-chevron-up").click(timeout=2000)
-                except Exception:
-                    pass
-                
-            # 3. Filtra pelo número da cotação (Ravex)
-            page.fill('input[name="busca_nDoc"]', str(nro_cotacao))
-            time.sleep(atraso_etapas)
-            page.click('input[value="Filtrar"], button:has-text("Filtrar")')
-            time.sleep(atraso_etapas)
-            
-            # 4. Seleciona a caixa de "Emitir contrato de frete"
-            checkbox_selector = 'input[type="checkbox"][name="dados_selecionados[]"]'
-            page.wait_for_selector(checkbox_selector, timeout=10000)
-            page.locator(checkbox_selector).first.check()
-            time.sleep(atraso_etapas)
-            
-            # 5. Clica em Avançar para abrir formulário de contrato
-            page.click('#botao_avancar')
-            time.sleep(atraso_etapas)
-            
-            # 6. Aguarda o formulário carregar
-            page.wait_for_selector('input[name="dados_dtFimViagem"]', state="visible", timeout=30000)
-            return True
-            
-        except Exception as e:
-            log_callback(f"[F4] [Item {nro_cotacao}] ERRO na transição para o Contrato de Frete: {e}", "ERRO")
-            import traceback
-            log_callback(f"[F4] Traceback: {traceback.format_exc()}", "DEBUG")
-            return False
 
     # Fase 5
     def get_fim_viagem(self, page: Page, dados_linha: Dict[str, str], data_pagamento: str, log_callback: Callable) -> str | None:
@@ -500,17 +488,6 @@ class LactalisSpecialBaseCompany(LactalisBaseCompany):
         cleaned_obs = " ".join(cleaned_obs.split())
         return cleaned_obs
 
-    def get_data_programada(self, dados_linha: Dict[str, str], data_pagamento: str, log_callback: Callable) -> str | None:
-        validade_raw = dados_linha.get("Validade")
-        if isinstance(validade_raw, datetime):
-            return validade_raw.strftime('%d/%m/%Y')
-        elif validade_raw:
-            match = re.search(r'(\d{2})[-/](\d{2})[-/](\d{4})', str(validade_raw))
-            if match:
-                return f"{match.group(1)}/{match.group(2)}/{match.group(3)}"
-            else:
-                return str(validade_raw).strip()
-        return None
 
 class LactalisPernoiteCompany(LactalisSpecialBaseCompany):
     def match(self, remetente: str) -> bool:

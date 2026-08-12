@@ -135,6 +135,8 @@ def preencher_formulario(
         log_callback(f"[F3] [Item {nro_cotacao_item}] --- INÍCIO: PREENCHIMENTO BÁSICO ---", "FASE")
         
         nro_cotacao = nro_cotacao_item
+        remetente_str = str(dados_linha.get("Remetente", ""))
+        company = get_company(remetente_str)
 
         # ETAPA 1: Selecionar "LOGTUDO MATRIZ - BAHIA"
         pause_event.wait()
@@ -150,14 +152,16 @@ def preencher_formulario(
 
         # ETAPA 3: Selecionar checkbox "emitirReciboFrete"
         pause_event.wait()
-        log_callback(f"[F3] [Item {nro_cotacao_item}] Etapa 3: Marcando Checkbox 'Emitir Recibo'...", "DEBUG")
-        page.check('input[name="dados_emitirReciboFrete[]"]')
+        if company.deve_emitir_recibo_frete():
+            log_callback(f"[F3] [Item {nro_cotacao_item}] Etapa 3: Marcando Checkbox 'Emitir Recibo'...", "DEBUG")
+            page.check('input[name="dados_emitirReciboFrete[]"]')
+        else:
+            log_callback(f"[F3] [Item {nro_cotacao_item}] Etapa 3: Fluxo especial. Desmarcando Checkbox 'Emitir Recibo'...", "DEBUG")
+            page.uncheck('input[name="dados_emitirReciboFrete[]"]')
         time.sleep(atraso_etapas)
 
         # ETAPA 4-5.1: Executar pesquisa e seleção da cotação
         pause_event.wait()
-        remetente_str = str(dados_linha.get("Remetente", ""))
-        company = get_company(remetente_str)
         
         ok_pesquisa = company.executar_pesquisa_cotacao(
             page=page,
@@ -172,7 +176,7 @@ def preencher_formulario(
 
         # ETAPA 6: Substituir valor em "dados_complementoPedido"
         pause_event.wait()
-        valor_pedido = company.get_complemento_pedido(nro_cotacao_item)
+        valor_pedido = company.get_complemento_pedido(nro_cotacao_item, dados_linha)
         if valor_pedido is not None:
             log_callback(f"[F3] [Item {nro_cotacao_item}] Etapa 6: Preenchendo Complemento do Pedido com '{valor_pedido}'...", "DEBUG")
             page.fill('input[name="dados_complementoPedido"]', valor_pedido, force=True)

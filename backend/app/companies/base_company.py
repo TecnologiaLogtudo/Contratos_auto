@@ -18,6 +18,10 @@ class BaseCompany(abc.ABC):
         """Se o campo validade é obrigatório na planilha."""
         return False
 
+    def deve_emitir_recibo_frete(self) -> bool:
+        """Retorna se deve marcar a caixa 'Emitir recibo/contrato' na Fase 3."""
+        return True
+
     # Fase 3 - Preenchimento da Cotação
     def match_cotacao_opcao(self, option_text: str, nro_cotacao: str) -> bool:
         """Retorna se o texto de uma opção de cotação corresponde à regra do cliente."""
@@ -27,7 +31,7 @@ class BaseCompany(abc.ABC):
         """Mensagem de formato esperado para erro de cotação."""
         return f"'{target_option_prefix}'"
 
-    def get_complemento_pedido(self, nro_cotacao_item: str) -> str | None:
+    def get_complemento_pedido(self, nro_cotacao_item: str, dados_linha: Dict[str, str] = None) -> str | None:
         """Valor a preencher no campo dados_complementoPedido. Se retornar None, não preenche."""
         return str(nro_cotacao_item)
 

@@ -113,8 +113,8 @@ def _ler_com_openpyxl(filepath: str, ws_out: openpyxl.worksheet.worksheet.Worksh
 
         log_callback(f"[F1] Lendo dados de {ws_in.max_row} linhas (openpyxl)...", "DEBUG")
 
-        # Começa da linha 9 para pular o cabeçalho antigo que pode estar na linha 8
-        for row_idx, row in enumerate(ws_in.iter_rows(min_row=9, values_only=True), start=9):
+        # Começa da linha 8 para pular o cabeçalho antigo que pode estar na linha 7
+        for row_idx, row in enumerate(ws_in.iter_rows(min_row=8, values_only=True), start=8):
             try:
                 # Col B (Nro cotação) -> Índice 1
                 # Col K (Categoria)   -> Índice 10
@@ -191,8 +191,8 @@ def _ler_com_xlrd(filepath: str, ws_out: openpyxl.worksheet.worksheet.Worksheet,
 
         log_callback(f"[F1] Lendo dados de {sheet.nrows} linhas (xlrd)...", "DEBUG")
 
-        # Começa do índice 8 (linha 9 no Excel) para pular o cabeçalho antigo
-        for row_idx in range(8, sheet.nrows):
+        # Começa do índice 7 (linha 8 no Excel) para pular o cabeçalho antigo
+        for row_idx in range(7, sheet.nrows):
             try:
                 # Col B (Nro cotação) -> Índice 1
                 # Col K (Categoria)   -> Índice 10
