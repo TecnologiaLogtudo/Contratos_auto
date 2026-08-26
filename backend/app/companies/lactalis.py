@@ -322,12 +322,35 @@ class LactalisSpecialBaseCompany(LactalisBaseCompany):
             log_callback(f"[Prep] [Item {nro_cotacao}] NF extraída: '{nf_val}'", "DEBUG")
             dados_linha["extracted_nf"] = nf_val
             
-            # 3. Clica na aba Conhecimentos
-            page.get_by_role("link", name="Conhecimentos").click()
+            # 3. Clica na aba Conhecimentos (ou navega para a rotina de Conhecimentos)
+            log_callback(f"[Prep] [Item {nro_cotacao}] Navegando para a listagem de Conhecimentos...", "DEBUG")
+            nav_sucesso = False
+            for loc in [
+                page.get_by_role("link", name="Conhecimentos"),
+                page.locator('a:has-text("Conhecimentos")'),
+                page.locator('a[href*="trans_conhecimento"]')
+            ]:
+                try:
+                    if loc.first.is_visible(timeout=2000):
+                        loc.first.click(timeout=5000)
+                        nav_sucesso = True
+                        break
+                except Exception:
+                    continue
+
+            if not nav_sucesso:
+                log_callback(f"[Prep] [Item {nro_cotacao}] Clique no menu Conhecimentos falhou ou indisponível. Usando navegação direta por URL...", "DEBUG")
+                page.goto("https://logtudo.e-login.net/versoes/versao5.0/rotinas/c.php?id=trans_conhecimento", wait_until="load", timeout=30000)
+
             time.sleep(atraso_etapas)
             
             # 4. Clica em adicionar Conhecimento
-            page.locator('[id="_boop"] > a').first.click()
+            try:
+                page.wait_for_selector('[id="_boop"] > a', timeout=10000)
+                page.locator('[id="_boop"] > a').first.click()
+            except Exception as e_add:
+                log_callback(f"[Prep] [Item {nro_cotacao}] Clique por ID em Adicionar Conhecimento falhou ({e_add}). Tentando por ícone/texto...", "DEBUG")
+                page.locator('a:has-text("Adicionar"), .fa-plus').first.click()
             time.sleep(atraso_etapas)
             
             # 5. Seleciona "Preenchimento Manual"
