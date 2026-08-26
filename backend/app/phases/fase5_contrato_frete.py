@@ -6,6 +6,7 @@ from datetime import datetime
 import time
 from .fase3_preenchimento import registrar_erro_em_planilha, registrar_sucesso_em_planilha
 from ..companies import get_company
+from .dialog_helper import fechar_popups_alerta
 
 # Data programada calculada delegada para backend/app/companies/
 
@@ -26,6 +27,9 @@ def preencher_contrato_frete(
     try:
         nro_cotacao = dados_linha.get("Nro cotação", "N/A")
         log_callback(f"[F5] [Item {nro_cotacao}] --- INÍCIO: CONTRATO DE FRETE ---", "FASE")
+        
+        # Garante que nenhum popup remanescente esteja aberto
+        fechar_popups_alerta(page, log_callback, nro_cotacao)
         
         remetente_str = str(dados_linha.get("Remetente", ""))
         company = get_company(remetente_str)

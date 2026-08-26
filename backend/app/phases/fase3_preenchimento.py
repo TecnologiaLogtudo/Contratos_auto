@@ -6,6 +6,7 @@ import openpyxl
 from openpyxl.styles import PatternFill
 import os
 from ..companies import get_company
+from .dialog_helper import fechar_popups_alerta, esperar_e_fechar_popups
 
 excel_lock = threading.Lock()
 
@@ -192,7 +193,30 @@ def preencher_formulario(
         page.click(botao_avancar_selector)
         
         log_callback(f"[F3] [Item {nro_cotacao_item}] Aguardando transição para a Fase 4...", "DEBUG")
-        page.wait_for_selector(primeiro_campo_fase4_selector, state="visible", timeout=30000)
+        
+        # Loop de espera com detecção ativa de popups durante a transição
+        transicao_concluida = False
+        timeout_limite = time.time() + 30
+        while time.time() < timeout_limite:
+            # Verifica e fecha qualquer popup que tenha surgido (ex: aviso de NFs já utilizadas)
+            fechar_popups_alerta(page, log_callback, nro_cotacao_item)
+            
+            # Verifica se o primeiro campo da Fase 4 já está presente e visível
+            try:
+                if page.locator(primeiro_campo_fase4_selector).is_visible(timeout=500):
+                    transicao_concluida = True
+                    break
+            except Exception:
+                pass
+            time.sleep(0.3)
+
+        if not transicao_concluida:
+            # Tenta um wait_for_selector final padrão
+            fechar_popups_alerta(page, log_callback, nro_cotacao_item)
+            page.wait_for_selector(primeiro_campo_fase4_selector, state="visible", timeout=5000)
+
+        # Garante que nenhum popup remanescente fique aberto antes de sair da Fase 3
+        fechar_popups_alerta(page, log_callback, nro_cotacao_item)
 
         log_callback(f"[F3] [Item {nro_cotacao_item}] Fase concluída com sucesso.", "SUCESSO")
         return True

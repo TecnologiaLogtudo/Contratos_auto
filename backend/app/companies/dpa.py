@@ -2,6 +2,7 @@ import time
 from typing import Callable
 from playwright.sync_api import Page
 from .lactalis import LactalisBaseCompany
+from ..phases.dialog_helper import fechar_popups_alerta
 
 class DPACompany(LactalisBaseCompany):
     def match(self, remetente: str) -> bool:
@@ -23,9 +24,13 @@ class DPACompany(LactalisBaseCompany):
         try:
             log_callback(f"[F4] [Item {nro_cotacao}] Aplicando regra de destinatário DPA...", "DEBUG")
             
+            # Fecha eventuais popups (ex: aviso de NFs já utilizadas) antes de interagir
+            fechar_popups_alerta(page, log_callback, nro_cotacao)
+
             # 1. Remetente: Pesquisar '05.300.331/0014-85'
             page.fill('input[name="pesquisa_enderecoRemetente_id"]', '05.300.331/0014-85')
             time.sleep(atraso_etapas)
+            fechar_popups_alerta(page, log_callback, nro_cotacao)
             page.click('i[name="botaoPesquisa_enderecoRemetente_id"]')
             
             remetente_selector = 'select[name="dados_enderecoRemetente_id"]'
@@ -58,8 +63,10 @@ class DPACompany(LactalisBaseCompany):
             time.sleep(atraso_etapas)
 
             # 2. Destinatário: Pesquisar '20511709000169'
+            fechar_popups_alerta(page, log_callback, nro_cotacao)
             page.fill('input[name="pesquisa_enderecoDestinatario_id"]', '20511709000169')
             time.sleep(atraso_etapas)
+            fechar_popups_alerta(page, log_callback, nro_cotacao)
             page.click('i[name="botaoPesquisa_enderecoDestinatario_id"]')
             
             destinatario_selector = 'select[name="dados_enderecoDestinatario_id"]'

@@ -2,6 +2,7 @@ import abc
 import time
 from typing import Callable, Dict
 from playwright.sync_api import Page
+from ..phases.dialog_helper import fechar_popups_alerta
 
 class BaseCompany(abc.ABC):
     @abc.abstractmethod
@@ -173,6 +174,7 @@ class BaseCompany(abc.ABC):
         atraso_etapas: float
     ) -> None:
         try:
+            fechar_popups_alerta(page, log_callback, nro_cotacao)
             locator = page.locator(selector)
             locator.wait_for(state="visible", timeout=3000)
             if locator.is_editable():

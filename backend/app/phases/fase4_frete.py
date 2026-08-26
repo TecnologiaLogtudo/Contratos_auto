@@ -5,6 +5,7 @@ from typing import Callable, Dict
 import re
 import unicodedata
 from ..companies import get_company
+from .dialog_helper import fechar_popups_alerta
 
 
 def _normalizar_texto(texto: str) -> str:
@@ -49,6 +50,7 @@ def _preencher_campo_se_editavel(
     registra um log de aviso e continua sem lançar erro.
     """
     try:
+        fechar_popups_alerta(page, log_callback, nro_cotacao)
         locator = page.locator(selector)
         # Espera curta (até 3 segundos) para o campo estar disponível e visível
         locator.wait_for(state="visible", timeout=3000)
@@ -64,29 +66,8 @@ def _preencher_campo_se_editavel(
 # Remetido Lactalis sync delegado para backend/app/companies/
 
 
-# Remetido DPA sync delegado para backend/app/companies/
-
-
 def _fechar_popups_alerta(page: Page, log_callback: Callable, nro_cotacao: str) -> None:
-    selectors = [
-        'button:has-text("OK")',
-        'input[type="button"][value="OK"]',
-        'input[type="submit"][value="OK"]',
-        'a:has-text("OK")',
-        '.swal2-confirm',
-        '.ui-dialog-buttonpane button',
-        '.modal-footer button'
-    ]
-    for sel in selectors:
-        try:
-            loc = page.locator(sel)
-            if loc.is_visible(timeout=500):
-                log_callback(f"[F4] [Item {nro_cotacao}] Pop-up de alerta detectado ({sel}). Fechando...", "AVISO")
-                loc.click()
-                page.wait_for_timeout(500)
-                break
-        except Exception:
-            pass
+    fechar_popups_alerta(page, log_callback, nro_cotacao)
 
 
 def preencher_frete(

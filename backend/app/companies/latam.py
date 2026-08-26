@@ -3,6 +3,7 @@ import time
 from typing import Callable
 from playwright.sync_api import Page
 from .base_company import BaseCompany
+from ..phases.dialog_helper import fechar_popups_alerta
 
 class LatamCompany(BaseCompany):
     def match(self, remetente: str) -> bool:
@@ -54,10 +55,12 @@ class LatamCompany(BaseCompany):
             log_callback(f"[F4] [Item {nro_cotacao}] Etapa 1: Pesquisando Destinatário pelo CNPJ '{cnpj}' do Remetente...", "DEBUG")
 
             # Preenche o CNPJ no campo de pesquisa do Destinatário
+            fechar_popups_alerta(page, log_callback, nro_cotacao)
             page.fill('input[name="pesquisa_enderecoDestinatario_id"]', cnpj)
             time.sleep(atraso_etapas)
 
             # Clica em Pesquisar
+            fechar_popups_alerta(page, log_callback, nro_cotacao)
             page.click('i[name="botaoPesquisa_enderecoDestinatario_id"]')
 
             # Espera as opções do select carregarem
