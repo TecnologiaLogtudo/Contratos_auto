@@ -6,7 +6,7 @@ from .lactalis import LactalisBaseCompany
 class DPACompany(LactalisBaseCompany):
     def match(self, remetente: str) -> bool:
         rem = remetente.lower()
-        return "dpa" in rem or "dairy partners" in rem or "02.012.862" in rem or "02012862" in rem
+        return "dpa" in rem or "dairy partners" in rem or "05.300.331" in rem or "05300331" in rem
 
     def match_cotacao_opcao(self, option_text: str, nro_cotacao: str) -> bool:
         return (

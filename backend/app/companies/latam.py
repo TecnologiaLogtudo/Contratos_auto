@@ -6,7 +6,8 @@ from .base_company import BaseCompany
 
 class LatamCompany(BaseCompany):
     def match(self, remetente: str) -> bool:
-        return "latam" in remetente.lower() or "tam" in remetente.lower()
+        rem = remetente.lower()
+        return "latam" in rem or "tam" in rem or "02.012.862" in rem or "02012862" in rem
 
     def sincronizar_remetente_destinatario(
         self, page: Page, nro_cotacao: str, log_callback: Callable, atraso_etapas: float
