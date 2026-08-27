@@ -156,9 +156,53 @@ def test_lactalis_sincronizacao_com_popup():
         assert page.input_value('select[name="dados_enderecoDestinatario_id"]') == "456"
 
         browser.close()
-        print("TESTE DE SINCRONIZAÇÃO LACTALIS PASSOU COM SUCESSO!")
+        print("TESTE DE SINCRONIZAÇÃO LACTALIS PARADA PASSOU COM SUCESSO!")
+
+
+def test_lactalis_especial_remetente_destinatario_inalterados():
+    print("Iniciando teste de sincronização Lactalis Pernoite/Em Rota (Remetente e Destinatário inalterados)...")
+    from backend.app.companies.lactalis import LactalisPernoiteCompany
+
+    html_content = """
+    <!DOCTYPE html>
+    <html>
+    <body>
+        <input name="pesquisa_enderecoRemetente_id" value="" />
+        <i name="botaoPesquisa_enderecoRemetente_id" onclick="document.querySelector('select[name=dados_enderecoRemetente_id]').innerHTML = '<option value=123>43.340.312/0006-61 - LACTALIS</option>';">Pesquisar Remetente</i>
+        <select name="dados_enderecoRemetente_id"><option value="111" selected>REMETENTE ORIGINAL</option></select>
+
+        <input name="pesquisa_enderecoDestinatario_id" value="" />
+        <i name="botaoPesquisa_enderecoDestinatario_id" onclick="document.querySelector('select[name=dados_enderecoDestinatario_id]').innerHTML = '<option value=456>20.511.709/0001-69 - LOGTUDO</option>';">Pesquisar Destinatario</i>
+        <select name="dados_enderecoDestinatario_id"><option value="789" selected>DESTINATARIO ORIGINAL</option></select>
+    </body>
+    </html>
+    """
+
+    logs = []
+    def log_cb(msg, level):
+        logs.append((msg, level))
+        print(f"[{level}] {msg}")
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        page = browser.new_page()
+        page.set_content(html_content)
+
+        company = LactalisPernoiteCompany()
+        sucesso = company.sincronizar_remetente_destinatario(page, "1870015", log_cb, 0.05)
+
+        assert sucesso is True
+        # Remetente MANTIDO como 111 (original)
+        assert page.input_value('select[name="dados_enderecoRemetente_id"]') == "111"
+        # Destinatario MANTIDO como 789 (original)
+        assert page.input_value('select[name="dados_enderecoDestinatario_id"]') == "789"
+
+        browser.close()
+        print("TESTE DE SINCRONIZAÇÃO LACTALIS ESPECIAL (REMETENTE E DESTINATÁRIO INALTERADOS) PASSOU COM SUCESSO!")
 
 
 if __name__ == "__main__":
     test_fechar_popup_lactalis_nf_duplicada()
     test_lactalis_sincronizacao_com_popup()
+    test_lactalis_especial_remetente_destinatario_inalterados()
+

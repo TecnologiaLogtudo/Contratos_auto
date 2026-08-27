@@ -208,6 +208,18 @@ class LactalisDiariaParadaCompany(LactalisBaseCompany):
 
 class LactalisSpecialBaseCompany(LactalisBaseCompany):
 
+    def sincronizar_remetente_destinatario(
+        self, page: Page, nro_cotacao: str, log_callback: Callable, atraso_etapas: float
+    ) -> bool:
+        try:
+            log_callback(f"[F4] [Item {nro_cotacao}] Regra Lactalis Especial (Diária em Rota / Pernoite / Garantida): Remetente e Destinatário mantidos inalterados.", "INFO")
+            # Fecha eventuais popups de alerta se existirem
+            fechar_popups_alerta(page, log_callback, nro_cotacao)
+            return True
+        except Exception as e:
+            log_callback(f"[F4] [Item {nro_cotacao}] ERRO na Etapa 1 (Remetente/Destinatário LACTALIS Especial): {e}", "ERRO")
+            return False
+
     def get_complemento_pedido(self, nro_cotacao_item: str, dados_linha: Dict[str, str] = None) -> str | None:
         if dados_linha:
             remetente = dados_linha.get("Remetente", "").lower()
