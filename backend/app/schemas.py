@@ -7,8 +7,8 @@ from typing import Literal, Optional
 class AutomationConfig(BaseModel):
     login: str = ""
     senha: str = ""
-    atraso_fases: float = Field(default=1.0, ge=0)
-    atraso_etapas: float = Field(default=0.3, ge=0)
+    atraso_fases: float = Field(default=0.1, ge=0)
+    atraso_etapas: float = Field(default=0.05, ge=0)
     dados_km: str = "20"
     aceitar_frete_minimo_antt: bool = True
 

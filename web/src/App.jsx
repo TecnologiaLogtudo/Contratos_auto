@@ -6,8 +6,8 @@ const MENU_ITEMS = ['Processamento', 'Resultados', 'Manual', 'Logs']
 const initialConfig = {
   login: '',
   senha: '',
-  atraso_fases: 0.5,
-  atraso_etapas: 0.15,
+  atraso_fases: 0.1,
+  atraso_etapas: 0.05,
   dados_km: '10',
   aceitar_frete_minimo_antt: true,
 }

@@ -74,8 +74,8 @@ class AutomacaoUI:
         
         self.var_login = tk.StringVar()
         self.var_senha = tk.StringVar()
-        self.var_atraso_fases = tk.StringVar(value='1')
-        self.var_atraso_etapas = tk.StringVar(value='0.3')
+        self.var_atraso_fases = tk.StringVar(value='0.1')
+        self.var_atraso_etapas = tk.StringVar(value='0.05')
         self.var_dados_km = tk.StringVar(value='10')
 
         self.criar_widgets()
@@ -197,13 +197,13 @@ class AutomacaoUI:
                     self.var_login.set(self.config['CREDENCIAS'].get('Login', ''))
                     self.var_senha.set(self.config['CREDENCIAS'].get('Senha', ''))
                 if 'AUTOMACAO' in self.config:
-                    self.var_atraso_fases.set(self.config['AUTOMACAO'].get('AtrasoFases', '1'))
-                    self.var_atraso_etapas.set(self.config['AUTOMACAO'].get('AtrasoEtapas', '0.3'))
+                    self.var_atraso_fases.set(self.config['AUTOMACAO'].get('AtrasoFases', '0.1'))
+                    self.var_atraso_etapas.set(self.config['AUTOMACAO'].get('AtrasoEtapas', '0.05'))
                     self.var_dados_km.set(self.config['AUTOMACAO'].get('Dados_km', '10'))
             else:
                 self.log("Arquivo config.ini não encontrado. Criando um novo.", "AVISO")
                 self.config['CREDENCIAS'] = {'Login': '', 'Senha': ''}
-                self.config['AUTOMACAO'] = {'AtrasoFases': '1', 'AtrasoEtapas': '0.3', 'Dados_km': '10'}
+                self.config['AUTOMACAO'] = {'AtrasoFases': '0.1', 'AtrasoEtapas': '0.05', 'Dados_km': '10'}
                 self.salvar_configuracoes()
 
         except Exception as e:

@@ -332,8 +332,8 @@ class AutomationManager:
         return AutomationConfig(
             login=os.getenv("AUTOMACAO_LOGIN", parser.get("CREDENCIAS", "login", fallback="")),
             senha=os.getenv("AUTOMACAO_SENHA", parser.get("CREDENCIAS", "senha", fallback="")),
-            atraso_fases=float(os.getenv("AUTOMACAO_ATRASOFASES", parser.getfloat("AUTOMACAO", "atrasofases", fallback=0.5))),
-            atraso_etapas=float(os.getenv("AUTOMACAO_ATRASOETAPAS", parser.getfloat("AUTOMACAO", "atrasoetapas", fallback=0.15))),
+            atraso_fases=float(os.getenv("AUTOMACAO_ATRASOFASES", parser.getfloat("AUTOMACAO", "atrasofases", fallback=0.1))),
+            atraso_etapas=float(os.getenv("AUTOMACAO_ATRASOETAPAS", parser.getfloat("AUTOMACAO", "atrasoetapas", fallback=0.05))),
             dados_km=os.getenv("AUTOMACAO_DADOS_KM", parser.get("AUTOMACAO", "dados_km", fallback="20")),
             aceitar_frete_minimo_antt=os.getenv("AUTOMACAO_ACEITAR_FRETE_MINIMO", str(parser.getboolean("AUTOMACAO", "aceitarfreteminimoantt", fallback=True))).lower() in ("true", "1", "yes"),
         )
