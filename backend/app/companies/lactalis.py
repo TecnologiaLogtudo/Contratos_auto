@@ -208,6 +208,9 @@ class LactalisDiariaParadaCompany(LactalisBaseCompany):
 
 class LactalisSpecialBaseCompany(LactalisBaseCompany):
 
+    def get_cidade_origem(self, cidade_planilha: str) -> str:
+        return "Simões filho"
+
     def sincronizar_remetente_destinatario(
         self, page: Page, nro_cotacao: str, log_callback: Callable, atraso_etapas: float
     ) -> bool:

@@ -101,9 +101,10 @@ def preencher_frete(
         if not sucesso_etapa1:
             return False
 
-        # ETAPA 2: Cidade (da planilha)
+        # ETAPA 2: Cidade / Origem
         pause_event.wait()
-        log_callback(f"[F4] [Item {nro_cotacao}] Etapa 2: Preenchendo Cidade '{cidade}'...", "DEBUG")
+        cidade_origem = company.get_cidade_origem(cidade)
+        log_callback(f"[F4] [Item {nro_cotacao}] Etapa 2: Preenchendo Cidade Origem '{cidade_origem}'...", "DEBUG")
 
         # Garante que a opção 'Início/Fim da Prestação' está marcada para tornar visível os campos de Cidade
         try:
@@ -140,7 +141,7 @@ def preencher_frete(
 
                 for opt in options:
                     option_text = opt.inner_text().strip()
-                    if option_text == city_name:
+                    if option_text.lower() == city_name.lower():
                         selected_value = opt.get_attribute("value")
                         selected_option_text = option_text
                         break
@@ -148,7 +149,7 @@ def preencher_frete(
                 if not selected_value:
                     for opt in options:
                         option_text = opt.inner_text().strip()
-                        if option_text.startswith(city_name):
+                        if option_text.lower().startswith(city_name.lower()):
                             selected_value = opt.get_attribute("value")
                             selected_option_text = option_text
                             break
@@ -166,9 +167,9 @@ def preencher_frete(
 
         cidade_encontrada = False
         
-        if _perform_city_search_and_selection(cidade):
+        if _perform_city_search_and_selection(cidade_origem):
             cidade_encontrada = True
-        elif cidade == "J. Pessoa":
+        elif cidade_origem == "J. Pessoa":
             log_callback(f"[F4] [Item {nro_cotacao}] AVISO: Cidade 'J. Pessoa' não encontrada. Tentando 'João Pessoa'...", "AVISO")
             if _perform_city_search_and_selection("João Pessoa"):
                 cidade_encontrada = True
@@ -176,9 +177,13 @@ def preencher_frete(
                 log_callback(f"[F4] [Item {nro_cotacao}] AVISO: Cidade 'João Pessoa' não encontrada. Tentando 'Pessoa'...", "AVISO")
                 if _perform_city_search_and_selection("Pessoa"):
                     cidade_encontrada = True
+        elif "simões" in cidade_origem.lower() or "simoes" in cidade_origem.lower():
+            log_callback(f"[F4] [Item {nro_cotacao}] AVISO: Cidade '{cidade_origem}' não encontrada. Tentando 'Simoes Filho'...", "AVISO")
+            if _perform_city_search_and_selection("Simoes Filho"):
+                cidade_encontrada = True
                         
         if not cidade_encontrada:
-            log_callback(f"[F4] [Item {nro_cotacao}] ERRO: Não foi possível encontrar a cidade '{cidade}', 'João Pessoa' ou 'Pessoa' após as tentativas.", "ERRO")
+            log_callback(f"[F4] [Item {nro_cotacao}] ERRO: Não foi possível encontrar a cidade de origem '{cidade_origem}' após as tentativas.", "ERRO")
             return False
         
         # ETAPA 3: Natureza da Operação (clicar em pesquisar)

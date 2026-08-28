@@ -139,6 +139,10 @@ class BaseCompany(abc.ABC):
         """Retorna o valor a preencher na Data Fim de Viagem."""
         return f"{data_pagamento} 12:00" if data_pagamento else None
 
+    def get_cidade_origem(self, cidade_planilha: str) -> str:
+        """Retorna a cidade a ser preenchida no campo Origem (Município Início)."""
+        return cidade_planilha
+
     def get_termo_busca_perfil(self, cidade_planilha: str) -> str:
         """Retorna o termo para buscar no Perfil de Apropriação."""
         return cidade_planilha
