@@ -1,15 +1,16 @@
 <!doctype html>
-<html lang="en">
+<html lang="pt-BR" class="dark">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>LogTudo - Automação</title>
+    <title>LogTudo Contratos_auto</title>
+    <link rel="icon" type="image/png" href="/brand/logos/logo_logtudo.png" />
     <script type="module">
       const baseUrl = (import.meta.env.BASE_URL || '/').replace(/\/+$/, '');
       window.LOGTUDO_BASE_PATH = baseUrl === '' ? '' : baseUrl;
     </script>
   </head>
-  <body>
+  <body class="bg-base text-ink antialiased min-h-screen">
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
   </body>

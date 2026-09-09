@@ -55,3 +55,8 @@ backend/app/data/*.db
 .env
 .env.*
 config.ini
+
+# Storage local e SQLite
+storage/
+backend/storage/
+
