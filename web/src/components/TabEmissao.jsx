@@ -74,7 +74,7 @@ export default function TabEmissao({
 
   const handleStart = () => {
     onStartJob(currentJob.id, {
-      login: loginInput || config?.login,
+      usuario: loginInput || config?.login,
       senha: senhaInput || config?.senha,
       headless: headlessInput,
     })
