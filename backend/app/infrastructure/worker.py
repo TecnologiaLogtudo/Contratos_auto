@@ -121,8 +121,29 @@ class JobWorker:
                 current_item=item.model_dump(),
             )
 
+        def screenshot_cb(name: str, image_bytes: bytes, cotacao: Optional[str] = None) -> None:
+            try:
+                cotacao_str = cotacao or (name.split("_")[-1] if "cotacao" in name else "GERAL")
+                art_id = self.artifacts.save_error_screenshot(
+                    job_id=self.job_id,
+                    nro_cotacao=cotacao_str,
+                    image_bytes=image_bytes,
+                )
+                self.broadcaster.log(
+                    self.job_id,
+                    f"Screenshot de evidência capturado e salvo.",
+                    level="DEBUG",
+                )
+            except Exception as e:
+                logger.warning(f"Erro ao salvar screenshot de evidência: {e}")
+
         # 3. Inicializa o processador de Excel e o runner de automação
         excel_proc = ExcelProcessor(self.excel_path, log_callback=log_cb)
+        from ..engine.browser_factory import BrowserConfig
+        browser_cfg = BrowserConfig(
+            headless=self.headless,
+            record_video_dir=str(self.artifacts.get_traces_dir(self.job_id)),
+        )
         runner = ContractRunner(
             usuario=self.usuario,
             senha=self.senha,
@@ -130,6 +151,8 @@ class JobWorker:
             throttle_seconds=self.throttle_seconds,
             log_callback=log_cb,
             progress_callback=progress_cb,
+            screenshot_callback=screenshot_cb,
+            browser_config=browser_cfg,
         )
 
         try:
@@ -219,6 +242,10 @@ class JobWorker:
             self.broadcaster.log(self.job_id, f"Falha fatal no lote: {e}", "ERRO")
         finally:
             runner.close()
+            try:
+                self.artifacts.register_video_artifacts(self.job_id)
+            except Exception as e_vid:
+                logger.warning(f"Erro ao registrar vídeos de evidência: {e_vid}")
 
 
 class WorkerManager:

@@ -38,6 +38,7 @@ async function request(endpoint, options = {}) {
 }
 
 export const api = {
+  API_BASE,
   // Jobs & Upload
   uploadAndValidate: async (file) => {
     const formData = new FormData()

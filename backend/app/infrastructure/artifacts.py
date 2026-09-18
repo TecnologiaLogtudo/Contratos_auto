@@ -89,6 +89,28 @@ class ArtifactManager:
             file_size_bytes=size_bytes,
         )
 
+    def register_video_artifacts(self, job_id: str) -> List[str]:
+        """Procura vídeos .webm no diretório de traces do Job e os registra como artefatos."""
+        registered = []
+        t_dir = self.get_traces_dir(job_id)
+        if not t_dir.exists():
+            return registered
+
+        video_files = list(t_dir.glob("*.webm"))
+        for vf in video_files:
+            if vf.stat().st_size == 0:
+                continue
+            size_bytes = vf.stat().st_size
+            art_id = self.repo.add_artifact(
+                job_id=job_id,
+                artifact_type="VIDEO_RECORDING",
+                file_path=str(vf),
+                file_name=f"video_{job_id}_{vf.name}",
+                file_size_bytes=size_bytes,
+            )
+            registered.append(art_id)
+        return registered
+
     def cleanup_expired_artifacts(self, max_age_days: int = 7) -> int:
         """
         Executa limpeza de traces e vídeos temporários com idade superior a max_age_days.

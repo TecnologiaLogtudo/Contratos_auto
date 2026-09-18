@@ -254,7 +254,7 @@ class ContractRunner:
                     summary.erros += 1
                     err_msg = str(err)
                     self.log(f"[Item {nro}] FALHA: {err_msg}", "ERRO")
-                    self._take_screenshot(f"falha_cotacao_{nro}")
+                    self._take_screenshot(f"falha_cotacao_{nro}", cotacao=nro)
                     self.processor.mark_error(nro, err_msg)
                     self.processor.save_output(self.output_filepath)
 
@@ -298,12 +298,17 @@ class ContractRunner:
             except Exception as e_login:
                 self.log(f"[Session] Falha no relogin de reset: {e_login}", "AVISO")
 
-    def _take_screenshot(self, name: str) -> None:
+    def _take_screenshot(self, name: str, cotacao: Optional[str] = None) -> None:
         try:
             if self.page and not self.page.is_closed():
-                self.on_screenshot(name)
-        except Exception:
-            pass
+                image_bytes = self.page.screenshot(full_page=False)
+                if self.on_screenshot:
+                    try:
+                        self.on_screenshot(name, image_bytes, cotacao)
+                    except TypeError:
+                        self.on_screenshot(name)
+        except Exception as e:
+            self.log(f"Aviso ao capturar screenshot '{name}': {e}", "DEBUG")
 
     def _close_browser(self) -> None:
         try:

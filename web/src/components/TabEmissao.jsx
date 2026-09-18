@@ -574,7 +574,7 @@ function ItemScreenshot({ jobId, cotacao, onOpenScreenshot }) {
           (a) => String(a.nro_cotacao) === String(cotacao) && a.artifact_type?.includes('SCREENSHOT')
         )
         if (match) {
-          setShot(`${api.API_BASE}/api/v2/jobs/${jobId}/download/${match.id}`)
+          setShot(api.getDownloadUrl(jobId, match.id))
         }
       })
       .catch(() => {})
@@ -623,7 +623,7 @@ function ItemArtifacts({ jobId, cotacao }) {
       {arts.map((a) => (
         <a
           key={a.id}
-          href={`${api.API_BASE}/api/v2/jobs/${jobId}/download/${a.id}`}
+          href={api.getDownloadUrl(jobId, a.id)}
           target="_blank"
           rel="noreferrer"
           className="flex items-center gap-2 text-[11px] text-accent hover:underline"

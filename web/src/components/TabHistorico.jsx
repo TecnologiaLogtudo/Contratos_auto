@@ -178,7 +178,7 @@ function JobExcelDownload({ jobId }) {
   if (!excel) return null
   return (
     <a
-      href={`${api.API_BASE}/api/v2/jobs/${jobId}/download/${excel.id}`}
+      href={api.getDownloadUrl(jobId, excel.id)}
       title={`Baixar planilha final: ${excel.file_name}`}
       onClick={(e) => e.stopPropagation()}
       className="inline-flex p-1 rounded text-ink-dim hover:text-ok hover:bg-ok/10 cursor-pointer ml-1"
@@ -389,7 +389,7 @@ function JobDetailDrawer({ detail, onClose, onOpenScreenshot }) {
               {artifacts.map((a) => (
                 <a
                   key={a.id}
-                  href={`${api.API_BASE}/api/v2/jobs/${job.id}/download/${a.id}`}
+                  href={api.getDownloadUrl(job.id, a.id)}
                   target="_blank"
                   rel="noreferrer"
                   className="flex items-center gap-2 p-2 rounded bg-raised border border-edge hover:border-accent/50 transition-colors cursor-pointer"
@@ -424,7 +424,7 @@ function ItemScreenshot({ jobId, cotacao, onOpenScreenshot }) {
         const match = (data?.artifacts || []).find(
           (a) => String(a.nro_cotacao) === String(cotacao) && a.artifact_type?.includes('SCREENSHOT')
         )
-        if (match) setShot(`${api.API_BASE}/api/v2/jobs/${jobId}/download/${match.id}`)
+        if (match) setShot(api.getDownloadUrl(jobId, match.id))
       })
       .catch(() => {})
     return () => {
