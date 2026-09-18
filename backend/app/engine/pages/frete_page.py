@@ -287,8 +287,12 @@ class FretePage:
             mot_sel = self.page.locator('select[name="dados_motorista_id"]')
             mot_sel.wait_for(state="attached", timeout=12000)
             
-            # Aguarda sair do estado de carregamento
-            self.page.wait_for_selector('select[name="dados_motorista_id"] option:not(:text("Carregando dados ..."))', timeout=12000)
+            # Aguarda sair do estado de carregamento (state="attached" é essencial para elementos option)
+            self.page.wait_for_selector(
+                'select[name="dados_motorista_id"] option:not(:text("Carregando dados ..."))',
+                state="attached",
+                timeout=12000,
+            )
 
             options = mot_sel.locator("option").all()
             if any("Nenhum registro encontrado!" in opt.inner_text() for opt in options):

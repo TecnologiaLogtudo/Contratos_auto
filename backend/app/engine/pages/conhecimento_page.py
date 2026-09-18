@@ -94,12 +94,18 @@ class ConhecimentoPage:
             self.page.locator('input[name="pesquisa_pedidos_id"]').fill(str(search_target))
             time.sleep(delay_step)
             self.page.locator('i[name="botaoPesquisa_pedidos_id"]').click()
-            # O modelo antigo aguardava 500ms pós-clique para o select popular via AJAX
-            self.page.wait_for_timeout(500)
-            time.sleep(delay_step)
+            # Aguarda o AJAX de busca de pedidos popular as opções no select (state="attached")
+            try:
+                self.page.wait_for_selector(
+                    'select[name="dados_pedidos_id"] option:not(:text("Carregando...")):not(:text("Carregando dados ..."))',
+                    state="attached",
+                    timeout=8000,
+                )
+            except Exception:
+                pass
 
             select_loc = self.page.locator('select[name="dados_pedidos_id"]')
-            select_loc.wait_for(timeout=6000)
+            select_loc.wait_for(state="attached", timeout=6000)
 
             # Detecção rápida: o portal sinaliza "nenhum registro" via title do select
             if (select_loc.get_attribute("title") or "").strip() == "Nenhum registro encontrado!":
@@ -118,13 +124,21 @@ class ConhecimentoPage:
                     f"o campo 'Nº Pedido Cliente' na cotação pode ainda conter a própria cotação em vez do pedido real.",
                     field_name="dados_pedidos_id", step="Fase 3")
 
-            # Busca por prefixo
+            # Busca por prefixo ou correspondência do número pesquisado
             target_prefix = f"{search_target} /"
             target_val = None
             for opt in options:
                 txt = opt.inner_text().strip()
-                if txt.startswith(target_prefix) or txt.startswith(f"{search_target} -") or txt == str(search_target):
-                    target_val = opt.get_attribute("value")
+                val = opt.get_attribute("value")
+                if not val:
+                    continue
+                if (
+                    txt.startswith(target_prefix)
+                    or txt.startswith(f"{search_target} -")
+                    or txt == str(search_target)
+                    or str(search_target) in txt
+                ):
+                    target_val = val
                     break
 
             if not target_val and len(options) > 1:
