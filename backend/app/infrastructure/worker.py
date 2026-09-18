@@ -27,7 +27,7 @@ class JobWorker:
         usuario: str,
         senha: str,
         excel_path: Path | str,
-        headless: bool = False,
+        headless: Optional[bool] = None,
         throttle_seconds: float = 2.5,
         repository: Optional[JobRepository] = None,
         artifacts: Optional[ArtifactManager] = None,
@@ -37,7 +37,8 @@ class JobWorker:
         self.usuario = usuario
         self.senha = senha
         self.excel_path = Path(excel_path)
-        self.headless = headless
+        headless_env = os.getenv("PLAYWRIGHT_HEADLESS", "true").strip().lower() == "true"
+        self.headless = headless if headless is not None else headless_env
         self.throttle_seconds = throttle_seconds
 
         self.repo = repository or job_repository
@@ -86,6 +87,8 @@ class JobWorker:
     def _run(self) -> None:
         """Loop de trabalho principal da Thread."""
         start_time = time.time()
+        if self.usuario:
+            self.repo.update_job_username(self.job_id, self.usuario)
         self.repo.update_job_status(self.job_id, "RUNNING")
         self.broadcaster.log(self.job_id, f"Iniciando processamento do Job {self.job_id}...", "INFO")
 
@@ -240,7 +243,7 @@ class WorkerManager:
         usuario: str,
         senha: str,
         excel_path: Path | str,
-        headless: bool = False,
+        headless: Optional[bool] = None,
         throttle_seconds: float = 2.5,
     ) -> JobWorker:
         """Cria e dispara um novo worker para o Job."""

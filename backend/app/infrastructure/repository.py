@@ -275,6 +275,14 @@ class JobRepository:
         cur.execute("SELECT * FROM job_items WHERE job_id = ? ORDER BY row_index ASC", (job_id,))
         return [dict(r) for r in cur.fetchall()]
 
+    def update_job_username(self, job_id: str, username: str) -> None:
+        """Atualiza o nome do operador (usuário) do Job."""
+        with self.db.transaction() as cur:
+            cur.execute(
+                "UPDATE jobs SET user_credentials_username = ? WHERE id = ?",
+                (username, job_id),
+            )
+
     # =========================================================================
     # LOGS
     # =========================================================================
@@ -286,15 +294,17 @@ class JobRepository:
         level: str = "INFO",
         phase: str = "GERAL",
         nro_cotacao: Optional[str] = None,
+        timestamp: Optional[str] = None,
     ) -> None:
-        """Grava uma entrada de log estruturado para o Job."""
+        """Grava uma entrada de log estruturado para o Job com horário local."""
+        ts = timestamp or datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         with self.db.transaction() as cur:
             cur.execute(
                 """
-                INSERT INTO job_logs (job_id, level, phase, nro_cotacao, message)
-                VALUES (?, ?, ?, ?, ?)
+                INSERT INTO job_logs (job_id, timestamp, level, phase, nro_cotacao, message)
+                VALUES (?, ?, ?, ?, ?, ?)
                 """,
-                (job_id, level.upper(), phase, nro_cotacao, message),
+                (job_id, ts, level.upper(), phase, nro_cotacao, message),
             )
 
     def list_job_logs(

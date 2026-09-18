@@ -22,7 +22,7 @@ WORKDIR /app
 COPY --from=builder /wheels /wheels
 COPY --from=builder /build/requirements.txt /tmp/requirements.txt
 RUN pip install --no-cache-dir --no-index --find-links=/wheels -r /tmp/requirements.txt && \
-    playwright install --with-deps chrome ffmpeg && \
+    playwright install --with-deps chromium chrome ffmpeg && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/* /wheels /tmp/requirements.txt /root/.cache
 

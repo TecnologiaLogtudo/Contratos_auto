@@ -36,7 +36,7 @@ class ContractRunner:
         senha: str,
         excel_processor: Optional[ExcelProcessor] = None,
         output_filepath: Optional[str | Path] = None,
-        headless: bool = False,
+        headless: Optional[bool] = None,
         throttle_seconds: float = 2.5,
         log_callback: Optional[Callable[[str, str], None]] = None,
         screenshot_callback: Optional[Callable[[str], None]] = None,
@@ -53,12 +53,13 @@ class ContractRunner:
         self.senha = senha
         self.processor = excel_processor
         self.output_filepath = Path(output_filepath) if output_filepath else None
-        self.headless = headless
+        headless_env = os.getenv("PLAYWRIGHT_HEADLESS", "true").strip().lower() == "true"
+        self.headless = headless if headless is not None else headless_env
         self.throttle_seconds = throttle_seconds
         self.log = log_callback or (lambda m, l="INFO": None)
         self.on_screenshot = screenshot_callback or (lambda name: None)
         self.on_progress = progress_callback or (lambda cur, tot, msg: None)
-        self.browser_config = browser_config or BrowserConfig(headless=headless)
+        self.browser_config = browser_config or BrowserConfig(headless=self.headless)
         self.delay_fases = delay_fases
         self.delay_etapas = delay_etapas
         self.dados_km = dados_km

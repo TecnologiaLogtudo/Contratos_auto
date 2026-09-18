@@ -63,7 +63,7 @@ class JobBroadcaster:
         message = {
             "type": event_type,
             "job_id": job_id,
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "data": payload,
         }
         text_payload = json.dumps(message, ensure_ascii=False)
@@ -122,6 +122,7 @@ class JobBroadcaster:
         Registra o log no banco SQLite e agenda o broadcast assíncrono para WebSockets e SSE.
         Totalmente thread-safe para chamadas da Worker Thread.
         """
+        ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         # 1. Persistência no SQLite
         try:
             self.repo.add_log(
@@ -130,12 +131,14 @@ class JobBroadcaster:
                 level=level,
                 phase=phase,
                 nro_cotacao=nro_cotacao,
+                timestamp=ts,
             )
         except Exception as e:
             logger.error(f"Erro ao salvar log no SQLite: {e}")
 
         # 2. Broadcast via loop assíncrono
         payload = {
+            "timestamp": ts,
             "level": level.upper(),
             "phase": phase,
             "nro_cotacao": nro_cotacao,

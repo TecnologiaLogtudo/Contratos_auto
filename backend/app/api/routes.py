@@ -35,7 +35,10 @@ UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
 class StartJobRequest(BaseModel):
     usuario: str = Field(..., description="Usuário do ERP LogTudo")
     senha: str = Field(..., description="Senha do ERP LogTudo")
-    headless: bool = Field(default=False, description="Executar navegador em background")
+    headless: bool = Field(
+        default_factory=lambda: os.getenv("PLAYWRIGHT_HEADLESS", "true").strip().lower() == "true",
+        description="Executar navegador em background",
+    )
     throttle_seconds: float = Field(default=2.5, description="Intervalo entre cotações em segundos")
 
 
@@ -130,6 +133,9 @@ async def start_job(job_id: str, req: StartJobRequest) -> ActionResponse:
         if not matching:
             raise HTTPException(status_code=404, detail="Arquivo original da planilha não encontrado.")
         excel_file = matching[0]
+
+    if req.usuario:
+        job_repository.update_job_username(job_id, req.usuario)
 
     try:
         worker_manager.create_and_start_worker(
