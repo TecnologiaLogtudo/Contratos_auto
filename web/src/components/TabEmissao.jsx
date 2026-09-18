@@ -27,7 +27,6 @@ export default function TabEmissao({
   const [loginInput, setLoginInput] = useState(config?.login || '')
   const [senhaInput, setSenhaInput] = useState(config?.senha || '')
   const [savingCreds, setSavingCreds] = useState(false)
-  const [headlessInput, setHeadlessInput] = useState(false)
   const [selectedItem, setSelectedItem] = useState(null)
   const [credsEditing, setCredsEditing] = useState(false)
   const fileInputRef = useRef(null)
@@ -76,7 +75,6 @@ export default function TabEmissao({
     onStartJob(currentJob.id, {
       usuario: loginInput || config?.login,
       senha: senhaInput || config?.senha,
-      headless: headlessInput,
     })
   }
 
@@ -211,20 +209,9 @@ export default function TabEmissao({
               )}
 
               {!hasActiveJob && !jobFinished && (
-                <div className="flex gap-2">
-                  <button onClick={handleStart} className="btn btn-primary flex-1" disabled={uploading}>
-                    Iniciar execução
-                  </button>
-                  <label className="btn btn-secondary cursor-pointer select-none">
-                    <input
-                      type="checkbox"
-                      checked={headlessInput}
-                      onChange={(e) => setHeadlessInput(e.target.checked)}
-                      className="mr-1 accent-[var(--color-accent)]"
-                    />
-                    Headless
-                  </label>
-                </div>
+                <button onClick={handleStart} className="btn btn-primary w-full" disabled={uploading}>
+                  Iniciar execução
+                </button>
               )}
 
               {jobFinished && (

@@ -80,6 +80,12 @@ class Database:
                 );
             """)
 
+            # Migração automática e segura para bancos SQLite existentes criados em versões anteriores
+            try:
+                conn.execute("ALTER TABLE jobs ADD COLUMN user_credentials_username TEXT;")
+            except sqlite3.OperationalError:
+                pass  # Coluna já existe
+
             # 2. Tabela de Itens
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS job_items (

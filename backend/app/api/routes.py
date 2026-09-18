@@ -35,9 +35,9 @@ UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
 class StartJobRequest(BaseModel):
     usuario: str = Field(..., description="Usuário do ERP LogTudo")
     senha: str = Field(..., description="Senha do ERP LogTudo")
-    headless: bool = Field(
-        default_factory=lambda: os.getenv("PLAYWRIGHT_HEADLESS", "true").strip().lower() == "true",
-        description="Executar navegador em background",
+    headless: Optional[bool] = Field(
+        default=None,
+        description="Executar navegador em background. Se None, utiliza PLAYWRIGHT_HEADLESS (true na VPS, false local).",
     )
     throttle_seconds: float = Field(default=2.5, description="Intervalo entre cotações em segundos")
 
@@ -134,10 +134,10 @@ async def start_job(job_id: str, req: StartJobRequest) -> ActionResponse:
             raise HTTPException(status_code=404, detail="Arquivo original da planilha não encontrado.")
         excel_file = matching[0]
 
-    if req.usuario:
-        job_repository.update_job_username(job_id, req.usuario)
-
     try:
+        if req.usuario:
+            job_repository.update_job_username(job_id, req.usuario)
+
         worker_manager.create_and_start_worker(
             job_id=job_id,
             usuario=req.usuario,
@@ -149,6 +149,10 @@ async def start_job(job_id: str, req: StartJobRequest) -> ActionResponse:
         return ActionResponse(success=True, message="Execução iniciada com sucesso.", job_id=job_id)
     except RuntimeError as e:
         raise HTTPException(status_code=409, detail=str(e))
+    except Exception as e:
+        import logging
+        logging.getLogger("uvicorn.error").exception(f"Erro inesperado no start_job ({job_id}): {e}")
+        raise HTTPException(status_code=500, detail=f"Erro ao iniciar o job: {str(e)}")
 
 
 @router.post("/jobs/{job_id}/pause", response_model=ActionResponse)

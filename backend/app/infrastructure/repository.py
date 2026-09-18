@@ -277,11 +277,14 @@ class JobRepository:
 
     def update_job_username(self, job_id: str, username: str) -> None:
         """Atualiza o nome do operador (usuário) do Job."""
-        with self.db.transaction() as cur:
-            cur.execute(
-                "UPDATE jobs SET user_credentials_username = ? WHERE id = ?",
-                (username, job_id),
-            )
+        try:
+            with self.db.transaction() as cur:
+                cur.execute(
+                    "UPDATE jobs SET user_credentials_username = ? WHERE id = ?",
+                    (username, job_id),
+                )
+        except Exception as e:
+            logger.warning(f"Aviso ao atualizar operador do Job {job_id}: {e}")
 
     # =========================================================================
     # LOGS
