@@ -146,10 +146,19 @@ class ContratoPage:
             self.page.locator('input[name="pesquisa_dados_perfisApropriacao_id"]').fill(termo)
             time.sleep(delay_step)
             self.page.locator('i[name="botaoPesquisa_dados_perfisApropriacao_id"]').click()
+            time.sleep(max(delay_step, 0.5))
 
             sel = self.page.locator('select[name="dados_perfisApropriacao_id"]')
             sel.wait_for(state="attached", timeout=6000)
-            options = sel.locator("option").all()
+            options = []
+            deadline = time.time() + 8
+            while time.time() < deadline:
+                options = sel.locator("option").all()
+                if any(opt.get_attribute("value") for opt in options):
+                    break
+                if any("Nenhum registro encontrado!" in opt.inner_text() for opt in options):
+                    break
+                time.sleep(0.25)
 
             if any("Nenhum registro encontrado!" in opt.inner_text() for opt in options):
                 raise FormFillError(f"Perfil de Apropriação não encontrado para '{termo}'.", field_name="dados_perfisApropriacao_id", step="Fase 5")

@@ -176,52 +176,56 @@ class ConhecimentoPage:
                 try:
                     # Usa seletor visível estrito (#pswobj3 ou input visível de notas)
                     input_nf = self.page.locator('#pswobj3:visible, input[name="pesquisa_dados_notas_carregamento_id"]:visible').first
-                    if input_nf.count() > 0:
-                        input_nf.fill(str(item.extracted_nf))
-                        try:
-                            input_nf.dispatch_event("change")
-                        except Exception:
-                            pass
-                        time.sleep(delay_step)
+                    if input_nf.count() == 0:
+                        raise FormFillError("Campo de pesquisa de Nota Fiscal não encontrado.", field_name="pesquisa_dados_notas_carregamento_id", step="Fase 3")
 
-                        # Botão de pesquisa de NF visível
-                        btn_nf = self.page.locator('.swrepp:visible i.fa-solid, i[name="botaoPesquisa_dados_notas_carregamento_id"]:visible, #pswobj3 + em i').first
-                        if btn_nf.count() > 0:
-                            btn_nf.click()
+                    input_nf.fill(str(item.extracted_nf))
+                    try:
+                        input_nf.dispatch_event("change")
+                    except Exception:
+                        pass
+                    time.sleep(delay_step)
 
-                        select_nf_selector = '#cswobj3:visible, select[name*="dados_notas_carregamento_id"]:visible'
-                        try:
-                            self.page.wait_for_selector(
-                                f'{select_nf_selector} option:not(:text("Carregando...")):not(:text("Carregando dados ..."))',
-                                state="attached",
-                                timeout=8000,
-                            )
-                        except Exception:
-                            pass
+                    # Botão de pesquisa de NF visível
+                    btn_nf = self.page.locator('.swrepp:visible i.fa-solid, i[name="botaoPesquisa_dados_notas_carregamento_id"]:visible, #pswobj3 + em i').first
+                    if btn_nf.count() == 0:
+                        raise FormFillError("Botão de pesquisa de Nota Fiscal não encontrado.", field_name="botaoPesquisa_dados_notas_carregamento_id", step="Fase 3")
+                    btn_nf.click()
+                    time.sleep(max(delay_step, 1.5))
 
-                        select_nf = self.page.locator(select_nf_selector).first
-                        if select_nf.count() > 0:
-                            select_nf.wait_for(state="attached", timeout=5000)
-                            options_nf = select_nf.locator("option").all()
-                            target_nf_val = None
-                            for opt in options_nf:
-                                v = opt.get_attribute("value")
-                                txt = opt.inner_text().strip()
-                                if v and (str(item.extracted_nf) in txt or v != ""):
-                                    target_nf_val = v
-                                    if str(item.extracted_nf) in txt:
-                                        break
-                            if target_nf_val:
-                                select_nf.select_option(value=target_nf_val)
-                                try:
-                                    select_nf.dispatch_event("change")
-                                except Exception:
-                                    pass
-                                self.log(f"[F3] [Item {nro}] Nota Fiscal '{item.extracted_nf}' vinculada no select (value: {target_nf_val}).", "DEBUG")
-                            time.sleep(delay_step)
+                    select_nf = self.page.locator('#cswobj3:visible, select[name*="dados_notas_carregamento_id"]:visible').first
+                    select_nf.wait_for(state="attached", timeout=8000)
+
+                    target_nf_val = None
+                    deadline = time.time() + 8
+                    while time.time() < deadline and not target_nf_val:
+                        for opt in select_nf.locator("option").all():
+                            v = opt.get_attribute("value")
+                            txt = opt.inner_text().strip()
+                            if v and str(item.extracted_nf) in txt:
+                                target_nf_val = v
+                                break
+                        if not target_nf_val:
+                            time.sleep(0.25)
+
+                    if not target_nf_val:
+                        opts = [opt.inner_text().strip() for opt in select_nf.locator("option").all()]
+                        raise FormFillError(
+                            f"Nota Fiscal '{item.extracted_nf}' não retornou opção selecionável. Opções: {opts}",
+                            field_name="dados_notas_carregamento_id",
+                            step="Fase 3",
+                        )
+
+                    select_nf.select_option(value=target_nf_val)
+                    try:
+                        select_nf.dispatch_event("change")
+                    except Exception:
+                        pass
+                    self.log(f"[F3] [Item {nro}] Nota Fiscal '{item.extracted_nf}' vinculada no select (value: {target_nf_val}).", "INFO")
+                    time.sleep(delay_step)
                 except Exception as e_nf:
                     safe_msg = str(e_nf).encode('ascii', errors='replace').decode('ascii')
-                    self.log(f"[F3] [Item {nro}] Aviso ao pesquisar NF auxiliar: {safe_msg}", "AVISO")
+                    raise FormFillError(f"Falha ao vincular Nota Fiscal auxiliar: {safe_msg}", field_name="dados_notas_carregamento_id", step="Fase 3")
 
         except FormFillError:
             raise

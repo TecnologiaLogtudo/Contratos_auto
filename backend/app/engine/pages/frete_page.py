@@ -120,6 +120,10 @@ class FretePage:
 
         if isinstance(strategy, LactalisSpecialBaseStrategy):
             # Valida e assegura que Destinatário e Remetente estejam preenchidos
+            rem_sel = self.page.locator('select[name="dados_enderecoRemetente_id"]')
+            if rem_sel.count() > 0 and not rem_sel.input_value():
+                raise FormFillError("Remetente não foi preenchido a partir da NF.", field_name="dados_enderecoRemetente_id", step="Fase 4")
+
             dest_sel = self.page.locator('select[name="dados_enderecoDestinatario_id"]')
             if dest_sel.count() > 0:
                 dest_val = dest_sel.input_value()
@@ -129,6 +133,8 @@ class FretePage:
                         target_v = opts[0].get_attribute("value")
                         dest_sel.select_option(value=target_v)
                         self.log(f"[F4] [Item {nro}] Destinatário selecionado a partir das opções da NF (value: {target_v}).", "DEBUG")
+                if not dest_sel.input_value():
+                    raise FormFillError("Destinatário não foi preenchido a partir da NF.", field_name="dados_enderecoDestinatario_id", step="Fase 4")
             self.log(f"[F4] [Item {nro}] Lactalis Especial: Remetente e Destinatário verificados com sucesso.", "DEBUG")
             return
 
