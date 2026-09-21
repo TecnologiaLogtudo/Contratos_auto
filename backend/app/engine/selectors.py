@@ -25,7 +25,7 @@ class CotacoesSelectors:
     url_cotacoes: str = "https://logtudo.e-login.net/versoes/versao5.0/rotinas/c.php?id=transp_cotacoesFrete"
     url_conhecimentos: str = "https://logtudo.e-login.net/versoes/versao5.0/rotinas/c.php?id=trans_conhecimento"
     painel_busca_fechado: str = ".rg-busca-rapida.rg-busca-rapida-close"
-    btn_expandir_busca: str = ".rg-busca-rapida__cabecalho, .fa.fa-chevron-up"
+    btn_expandir_busca: str = ".rg-busca-rapida__cabecalho"
     input_busca_nro: str = 'input[name="busca_nro"]'
     btn_filtrar: str = 'input[value="Filtrar"], button:has-text("Filtrar")'
     status_error: str = 'div.error p:has-text("Status da cotação não permite editar a mesma")'
@@ -48,8 +48,9 @@ class ConhecimentoSelectors:
     input_pesquisa_pedido: str = 'input[name="pesquisa_pedidos_id"]'
     btn_pesquisa_pedido: str = 'i[name="botaoPesquisa_pedidos_id"]'
     select_pedido: str = 'select[name="dados_pedidos_id"]'
-    input_nf_auxiliar: str = '#pswobj3'
-    btn_pesquisa_nf: str = '.swrepp > td > em > .fa-solid, #pswobj3 + em i'
+    input_nf_auxiliar: str = 'input[name="pesquisa_dados_notas_carregamento_id"], #pswobj3'
+    btn_pesquisa_nf: str = 'i[name="botaoPesquisa_dados_notas_carregamento_id"], .swrepp > td > em > .fa-solid, #pswobj3 + em i'
+    select_nf_auxiliar: str = 'select[name^="dados_notas_carregamento_id"], #cswobj2_rep_2, [id^="cswobj2_rep_"]'
     input_complemento_pedido: str = 'input[name="dados_complementoPedido"]'
     btn_avancar: str = '#botao_avancar, button:has-text("Avançar")'
     indicador_fase4: str = 'input[name="pesquisa_enderecoDestinatario_id"], select[name="dados_enderecoDestinatario_id"]'

@@ -24,16 +24,16 @@ class LoginPage:
 
         self.log("[F2] Navegando para a página de login...", "INFO")
         try:
-            self.page.goto(self.LOGIN_URL, wait_until="load", timeout=45000)
+            self.page.goto(self.LOGIN_URL, wait_until="commit", timeout=30000)
         except Exception as e:
             raise NavigationError(f"Falha ao carregar página de login: {e}", url=self.LOGIN_URL, step="Fase 2 - Login")
 
-        DialogGuard.dismiss_all_popups(self.page, self.log, "Login")
-
-        # 1. Preenche usuário
+        # 1. Preenche usuário e senha assim que o formulário estiver visível no DOM
         self.log("[F2] Preenchendo credenciais...", "DEBUG")
         try:
-            self.page.locator('input[name="usuario"]').fill(usuario)
+            usr_input = self.page.locator('input[name="usuario"]')
+            usr_input.wait_for(state="visible", timeout=15000)
+            usr_input.fill(usuario)
             self.page.locator('input[name="senha"]').fill(senha)
         except Exception as e:
             raise AuthenticationError(f"Erro ao preencher campos de login: {e}", reason="Campos Inacessíveis")
@@ -93,6 +93,6 @@ class LoginPage:
         if url_destino:
             self.log("[F2] Navegando para o módulo de Conhecimentos...", "INFO")
             try:
-                self.page.goto(url_destino, wait_until="load", timeout=90000)
+                self.page.goto(url_destino, wait_until="domcontentloaded", timeout=30000)
             except Exception as e:
                 raise NavigationError(f"Falha ao carregar destino: {e}", url=url_destino, step="Fase 2 - Destino")

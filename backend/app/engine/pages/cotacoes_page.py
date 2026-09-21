@@ -42,7 +42,7 @@ class CotacoesPage:
         try:
             if self.page.locator(".rg-busca-rapida.rg-busca-rapida-close").is_visible(timeout=1500):
                 self.log(f"[Prep] [Item {nro}] Expandindo painel de filtros...", "DEBUG")
-                cabecalho = self.page.locator(".rg-busca-rapida__cabecalho, .fa.fa-chevron-up")
+                cabecalho = self.page.locator(".rg-busca-rapida__cabecalho")
                 if cabecalho.count() > 0:
                     cabecalho.first.click()
                 time.sleep(delay_step)

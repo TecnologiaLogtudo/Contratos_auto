@@ -35,9 +35,10 @@ class FretePage:
         self.log(f"[F4] [Item {nro}] Etapa 1: Configurando Remetente e Destinatário...", "DEBUG")
         self._sincronizar_remetente_destinatario(item, strategy, delay_step)
 
-        # 2. Cidade / Origem
-        self.log(f"[F4] [Item {nro}] Etapa 2: Configurando Município de Origem...", "DEBUG")
-        self._configurar_cidade_origem(item, strategy, delay_step)
+        # 2. Cidade / Origem (apenas quando não preenchido pela NF)
+        if not isinstance(strategy, LactalisSpecialBaseStrategy):
+            self.log(f"[F4] [Item {nro}] Etapa 2: Configurando Município de Origem...", "DEBUG")
+            self._configurar_cidade_origem(item, strategy, delay_step)
 
         # 3. Natureza da Operação (CFOP)
         self.log(f"[F4] [Item {nro}] Etapa 3: Selecionando Natureza da Operação...", "DEBUG")
@@ -101,12 +102,13 @@ class FretePage:
         except Exception:
             pass
 
-        # 12. Avança para a Fase 5
-        self.log(f"[F4] [Item {nro}] Etapa 9: Avançando para a Fase 5...", "DEBUG")
+        # 12. Avança para a Fase 5 / Salva o Conhecimento
+        self.log(f"[F4] [Item {nro}] Etapa 9: Salvando Conhecimento e avançando para a Fase 5...", "DEBUG")
         try:
-            self.page.locator('#botao_avancar, button:has-text("Avançar")').first.click()
+            btn_salvar = self.page.locator('#botaoSubmit, input[type="submit"][value*="Salvar"], button:has-text("Salvar"), #botao_avancar, button:has-text("Avançar")').first
+            btn_salvar.click()
         except Exception as e:
-            raise FormFillError(f"Falha ao clicar no botão Avançar: {e}", field_name="botao_avancar", step="Fase 4")
+            raise FormFillError(f"Falha ao clicar no botão Salvar/Avançar: {e}", field_name="botao_salvar", step="Fase 4")
 
         # 13. Aguarda transição para a Fase 5
         self._aguardar_transicao_fase5(item)
@@ -117,8 +119,17 @@ class FretePage:
         DialogGuard.dismiss_all_popups(self.page, self.log, f"Item {nro}")
 
         if isinstance(strategy, LactalisSpecialBaseStrategy):
-            # Mantém preenchimento automático
-            self.log(f"[F4] [Item {nro}] Lactalis Especial: Remetente e Destinatário mantidos da cotação.", "DEBUG")
+            # Valida e assegura que Destinatário e Remetente estejam preenchidos
+            dest_sel = self.page.locator('select[name="dados_enderecoDestinatario_id"]')
+            if dest_sel.count() > 0:
+                dest_val = dest_sel.input_value()
+                if not dest_val:
+                    opts = [o for o in dest_sel.locator("option").all() if o.get_attribute("value")]
+                    if opts:
+                        target_v = opts[0].get_attribute("value")
+                        dest_sel.select_option(value=target_v)
+                        self.log(f"[F4] [Item {nro}] Destinatário selecionado a partir das opções da NF (value: {target_v}).", "DEBUG")
+            self.log(f"[F4] [Item {nro}] Lactalis Especial: Remetente e Destinatário verificados com sucesso.", "DEBUG")
             return
 
         if isinstance(strategy, DPAStrategy):
@@ -358,7 +369,7 @@ class FretePage:
 
     def _aguardar_transicao_fase5(self, item: ItemContrato) -> None:
         nro = item.nro_cotacao
-        primeiro_campo_fase5 = 'input[name="dados_dtFimViagem"]'
+        primeiro_campo_fase5 = 'input[name="dados_dtFimViagem"], input[name="busca_nDoc"], [id="dados_dtFimViagem"], button:has-text("Emitir contrato"), a:has-text("Emitir contrato")'
         timeout_limit = time.time() + 30
 
         while time.time() < timeout_limit:

@@ -15,6 +15,7 @@ import xlrd
 from ..domain.models import ItemContrato, ItemStatus
 from ..domain.errors import SpreadsheetValidationError
 from .sanitizer import sanitize_bsoft_xls, sanitize_bsoft_xlsx, NormalizedSpreadsheet
+from .strategies.lactalis_strategy import extrair_numero_nf
 
 # Regex aprimorado para placas brasileiras com word boundaries
 PLACA_REGEX = re.compile(
@@ -386,6 +387,18 @@ class ExcelProcessor:
             elif is_erro:
                 item_status = ItemStatus.ERRO
 
+            idx_obs_interna = mapping.get("observacao_interna")
+            obs_interna_raw = str(get_col(idx_obs_interna) or "").strip() if idx_obs_interna is not None else ""
+            if not obs_interna_raw and nome_placa_raw and ("\n" in nome_placa_raw or "nf" in nome_placa_raw.lower() or "pernoite" in nome_placa_raw.lower()):
+                obs_interna_raw = nome_placa_raw
+
+            extracted_nf = extrair_numero_nf(obs_interna_raw) if obs_interna_raw else None
+            extracted_nro_pedido = None
+            if obs_interna_raw:
+                match_ped = re.search(r'\b(\d{6,10})\b', obs_interna_raw)
+                if match_ped:
+                    extracted_nro_pedido = match_ped.group(1)
+
             cidade, uf = processar_cidade_uf(cidade_uf_raw, r_idx)
             nome, placa, data_pagamento, viagem_extra = processar_nome_placa(nome_placa_raw, r_idx)
 
@@ -402,6 +415,9 @@ class ExcelProcessor:
                 validade=validade_raw,
                 frete_a_pagar=frete_pagar_raw,
                 frete_negociado=frete_negociado_raw,
+                extracted_obs_interna=obs_interna_raw or None,
+                extracted_nf=extracted_nf,
+                extracted_nro_pedido=extracted_nro_pedido,
                 status=item_status,
                 row_index=r_idx,
             )

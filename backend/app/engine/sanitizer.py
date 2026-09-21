@@ -38,6 +38,7 @@ COLUMN_SYNONYMS = {
     "frete_a_pagar": ["frete a pagar", "frete pagar", "valor a pagar", "a pagar"],
     "frete_negociado": ["frete negociado", "valor negociado", "negociado"],
     "viagem_extra": ["viagem extra", "extra"],
+    "observacao_interna": ["observação interna", "observacao interna", "obs interna", "observação", "observacao"],
 }
 
 

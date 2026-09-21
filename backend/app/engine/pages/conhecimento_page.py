@@ -94,12 +94,13 @@ class ConhecimentoPage:
             self.page.locator('input[name="pesquisa_pedidos_id"]').fill(str(search_target))
             time.sleep(delay_step)
             self.page.locator('i[name="botaoPesquisa_pedidos_id"]').click()
+            
             # Aguarda o AJAX de busca de pedidos popular as opções no select (state="attached")
             try:
                 self.page.wait_for_selector(
                     'select[name="dados_pedidos_id"] option:not(:text("Carregando...")):not(:text("Carregando dados ..."))',
                     state="attached",
-                    timeout=8000,
+                    timeout=6000,
                 )
             except Exception:
                 pass
@@ -107,21 +108,33 @@ class ConhecimentoPage:
             select_loc = self.page.locator('select[name="dados_pedidos_id"]')
             select_loc.wait_for(state="attached", timeout=6000)
 
-            # Detecção rápida: o portal sinaliza "nenhum registro" via title do select
-            if (select_loc.get_attribute("title") or "").strip() == "Nenhum registro encontrado!":
-                raise FormFillError(
-                    f"Pedido '{search_target}' não encontrado no ERP (nenhum registro retornado na busca). "
-                    f"Verifique se a cotação {nro} já foi convertida em pedido pelo comercial — "
-                    f"o campo 'Nº Pedido Cliente' na cotação pode ainda conter a própria cotação em vez do pedido real.",
-                    field_name="dados_pedidos_id", step="Fase 3")
-
             options = select_loc.locator("option").all()
+            opts_text = [opt.inner_text().strip() for opt in options]
 
-            if any("Nenhum registro encontrado!" in opt.inner_text() for opt in options):
+            # Se a busca por pedido extraído retornou 'Nenhum registro', tenta fallback para a cotação
+            if (
+                any("Nenhum registro encontrado!" in t for t in opts_text)
+                or (select_loc.get_attribute("title") or "").strip() == "Nenhum registro encontrado!"
+            ) and search_target != item.nro_cotacao:
+                self.log(f"[F3] [Item {nro}] Pedido '{search_target}' não encontrado. Tentando fallback para cotação '{item.nro_cotacao}'...", "DEBUG")
+                search_target = item.nro_cotacao
+                self.page.locator('input[name="pesquisa_pedidos_id"]').fill(str(search_target))
+                time.sleep(delay_step)
+                self.page.locator('i[name="botaoPesquisa_pedidos_id"]').click()
+                try:
+                    self.page.wait_for_selector(
+                        'select[name="dados_pedidos_id"] option:not(:text("Carregando...")):not(:text("Carregando dados ..."))',
+                        state="attached",
+                        timeout=6000,
+                    )
+                except Exception:
+                    pass
+                options = select_loc.locator("option").all()
+                opts_text = [opt.inner_text().strip() for opt in options]
+
+            if any("Nenhum registro encontrado!" in t for t in opts_text):
                 raise FormFillError(
-                    f"Pedido '{search_target}' não encontrado no ERP (nenhum registro retornado na busca). "
-                    f"Verifique se a cotação {nro} já foi convertida em pedido pelo comercial — "
-                    f"o campo 'Nº Pedido Cliente' na cotação pode ainda conter a própria cotação em vez do pedido real.",
+                    f"Pedido/Cotação '{search_target}' não encontrado no ERP (nenhum registro retornado na busca).",
                     field_name="dados_pedidos_id", step="Fase 3")
 
             # Busca por prefixo ou correspondência do número pesquisado
@@ -154,22 +167,61 @@ class ConhecimentoPage:
                 self.log(f"[F3] [Item {nro}] Cotação vinculada com sucesso (value: {target_val}).", "DEBUG")
             else:
                 raise FormFillError(
-                    f"Opção correspondente a '{search_target}' não encontrada no select de pedidos "
-                    f"(a busca retornou registros, mas nenhum corresponde ao número pesquisado).",
+                    f"Opção correspondente a '{search_target}' não encontrada no select de pedidos.",
                     field_name="dados_pedidos_id", step="Fase 3")
 
-            # Se houver NF extraída (Lactalis Especial), preenche o campo de NF auxiliar
+            # Se houver NF extraída (Lactalis Especial / Diária), preenche e vincula o campo de NF auxiliar
             if item.extracted_nf:
                 self.log(f"[F3] [Item {nro}] Vinculando Nota Fiscal '{item.extracted_nf}'...", "DEBUG")
                 try:
-                    self.page.locator('#pswobj3').fill(str(item.extracted_nf))
-                    time.sleep(delay_step)
-                    btn_nf = self.page.locator('.swrepp > td > em > .fa-solid, #pswobj3 + em i')
-                    if btn_nf.count() > 0:
-                        btn_nf.first.click()
+                    # Usa seletor visível estrito (#pswobj3 ou input visível de notas)
+                    input_nf = self.page.locator('#pswobj3:visible, input[name="pesquisa_dados_notas_carregamento_id"]:visible').first
+                    if input_nf.count() > 0:
+                        input_nf.fill(str(item.extracted_nf))
+                        try:
+                            input_nf.dispatch_event("change")
+                        except Exception:
+                            pass
                         time.sleep(delay_step)
+
+                        # Botão de pesquisa de NF visível
+                        btn_nf = self.page.locator('.swrepp:visible i.fa-solid, i[name="botaoPesquisa_dados_notas_carregamento_id"]:visible, #pswobj3 + em i').first
+                        if btn_nf.count() > 0:
+                            btn_nf.click()
+
+                        select_nf_selector = '#cswobj3:visible, select[name*="dados_notas_carregamento_id"]:visible'
+                        try:
+                            self.page.wait_for_selector(
+                                f'{select_nf_selector} option:not(:text("Carregando...")):not(:text("Carregando dados ..."))',
+                                state="attached",
+                                timeout=8000,
+                            )
+                        except Exception:
+                            pass
+
+                        select_nf = self.page.locator(select_nf_selector).first
+                        if select_nf.count() > 0:
+                            select_nf.wait_for(state="attached", timeout=5000)
+                            options_nf = select_nf.locator("option").all()
+                            target_nf_val = None
+                            for opt in options_nf:
+                                v = opt.get_attribute("value")
+                                txt = opt.inner_text().strip()
+                                if v and (str(item.extracted_nf) in txt or v != ""):
+                                    target_nf_val = v
+                                    if str(item.extracted_nf) in txt:
+                                        break
+                            if target_nf_val:
+                                select_nf.select_option(value=target_nf_val)
+                                try:
+                                    select_nf.dispatch_event("change")
+                                except Exception:
+                                    pass
+                                self.log(f"[F3] [Item {nro}] Nota Fiscal '{item.extracted_nf}' vinculada no select (value: {target_nf_val}).", "DEBUG")
+                            time.sleep(delay_step)
                 except Exception as e_nf:
-                    self.log(f"[F3] [Item {nro}] Aviso ao pesquisar NF auxiliar: {e_nf}", "DEBUG")
+                    safe_msg = str(e_nf).encode('ascii', errors='replace').decode('ascii')
+                    self.log(f"[F3] [Item {nro}] Aviso ao pesquisar NF auxiliar: {safe_msg}", "AVISO")
 
         except FormFillError:
             raise
