@@ -39,21 +39,15 @@ class LatamCompany(BaseCompany):
                 except Exception:
                     remetente_text = f"Valor {remetente_value}"
 
-            # Extrai o CNPJ desconsiderando sinais
-            # Padrão busca formato CNPJ ou sequência de 14 dígitos
-            cnpj_match = re.search(r'(\d{2}\.\d{3}\.\d{3}/\d{4}-\d{2})|(\d{14})', remetente_text)
+            # Só é CNPJ se estiver formatado ou como 14 dígitos consecutivos.
+            cnpj_match = re.search(r'(\d{2}\.\d{3}\.\d{3}/\d{4}-\d{2})|(?<!\d)(\d{14})(?!\d)', remetente_text)
             sincronizar_com_remetente = True
             if cnpj_match:
                 cnpj = re.sub(r'\D', '', cnpj_match.group(0))
             else:
-                # Caso não encontre no padrão, tenta extrair todos os dígitos e pegar os primeiros 14
-                digits = re.sub(r'\D', '', remetente_text)
-                if len(digits) >= 14:
-                    cnpj = digits[:14]
-                else:
-                    cnpj = "20511709000169"
-                    sincronizar_com_remetente = False
-                    log_callback(f"[F4] [Item {nro_cotacao}] AVISO: Não foi possível obter o CNPJ do Remetente ('{remetente_text}'). Pesquisando Destinatário LogTudo.", "AVISO")
+                cnpj = "20511709000169"
+                sincronizar_com_remetente = False
+                log_callback(f"[F4] [Item {nro_cotacao}] AVISO: Não foi possível obter o CNPJ do Remetente ('{remetente_text}'). Pesquisando Destinatário LogTudo.", "AVISO")
 
             origem_cnpj = "do Remetente" if sincronizar_com_remetente else "LogTudo"
             log_callback(f"[F4] [Item {nro_cotacao}] Etapa 1: Pesquisando Destinatário pelo CNPJ '{cnpj}' {origem_cnpj}...", "DEBUG")

@@ -162,10 +162,10 @@ class FretePage:
                 raise FormFillError("Remetente não está selecionado na tela.", field_name="dados_enderecoRemetente_id", step="Fase 4")
 
             rem_text = self.page.locator(f'select[name="dados_enderecoRemetente_id"] option[value="{rem_val}"]').inner_text().strip()
-            cnpj_match = re.search(r'(\d{2}\.\d{3}\.\d{3}/\d{4}-\d{2})|(\d{14})', rem_text)
-            cnpj = re.sub(r'\D', '', cnpj_match.group(0)) if cnpj_match else re.sub(r'\D', '', rem_text)[:14]
+            cnpj_match = re.search(r'(\d{2}\.\d{3}\.\d{3}/\d{4}-\d{2})|(?<!\d)(\d{14})(?!\d)', rem_text)
+            cnpj = re.sub(r'\D', '', cnpj_match.group(0)) if cnpj_match else ""
 
-            if not cnpj or len(cnpj) < 8:
+            if not cnpj:
                 self.log(f"[F4] [Item {nro}] Aviso: CNPJ não identificado do Remetente ('{rem_text}'). Pesquisando Destinatário LogTudo.", "AVISO")
                 self._selecionar_destinatario_por_cnpj("20511709000169", item, delay_step)
                 return

@@ -186,6 +186,10 @@ Processo executado:
 3. Usa o numero da cotacao como complemento do pedido.
 4. Na etapa de frete, mantem o remetente selecionado pelo portal.
 5. Pesquisa o destinatario pelo CNPJ extraido do remetente.
+   - O CNPJ do remetente so e considerado valido se estiver no formato
+     00.000.000/0000-00 ou como 14 digitos consecutivos.
+   - Numeros separados no texto do remetente nao devem ser juntados para formar
+     CNPJ.
    - Se o remetente nao tiver CNPJ identificavel, pesquisa LogTudo pelo CNPJ
      20511709000169.
 6. Configura cidade de origem a partir da cidade da planilha.
@@ -502,7 +506,8 @@ Depois da execucao:
 LATAM / Padrao:
 - Pedido: cotacao da planilha.
 - Destinatario: pesquisado pelo CNPJ do remetente; se nao houver CNPJ, pesquisa
-  LogTudo pelo CNPJ 20511709000169.
+  LogTudo pelo CNPJ 20511709000169. CNPJ do remetente so vale formatado ou com
+  14 digitos consecutivos.
 - Perfil: cidade.
 - Km: configuracao padrao.
 - NCM: vinho / 2204.
