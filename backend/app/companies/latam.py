@@ -14,7 +14,8 @@ class LatamCompany(BaseCompany):
         self, page: Page, nro_cotacao: str, log_callback: Callable, atraso_etapas: float
     ) -> bool:
         """
-        Regra atual da LATAM: Destinatário é cópia do Remetente (Busca pelo CNPJ e seleciona ID exato)
+        Regra atual da LATAM: Destinatário é cópia do Remetente quando houver CNPJ;
+        sem CNPJ no Remetente, pesquisa Destinatário LogTudo pelo CNPJ 20511709000169.
         """
         destinatario_selector = 'select[name="dados_enderecoDestinatario_id"]'
         remetente_selector = 'select[name="dados_enderecoRemetente_id"]'
@@ -41,6 +42,7 @@ class LatamCompany(BaseCompany):
             # Extrai o CNPJ desconsiderando sinais
             # Padrão busca formato CNPJ ou sequência de 14 dígitos
             cnpj_match = re.search(r'(\d{2}\.\d{3}\.\d{3}/\d{4}-\d{2})|(\d{14})', remetente_text)
+            sincronizar_com_remetente = True
             if cnpj_match:
                 cnpj = re.sub(r'\D', '', cnpj_match.group(0))
             else:
@@ -49,10 +51,12 @@ class LatamCompany(BaseCompany):
                 if len(digits) >= 14:
                     cnpj = digits[:14]
                 else:
-                    log_callback(f"[F4] [Item {nro_cotacao}] ERRO: Não foi possível obter o CNPJ do Remetente ('{remetente_text}').", "ERRO")
-                    return False
+                    cnpj = "20511709000169"
+                    sincronizar_com_remetente = False
+                    log_callback(f"[F4] [Item {nro_cotacao}] AVISO: Não foi possível obter o CNPJ do Remetente ('{remetente_text}'). Pesquisando Destinatário LogTudo.", "AVISO")
 
-            log_callback(f"[F4] [Item {nro_cotacao}] Etapa 1: Pesquisando Destinatário pelo CNPJ '{cnpj}' do Remetente...", "DEBUG")
+            origem_cnpj = "do Remetente" if sincronizar_com_remetente else "LogTudo"
+            log_callback(f"[F4] [Item {nro_cotacao}] Etapa 1: Pesquisando Destinatário pelo CNPJ '{cnpj}' {origem_cnpj}...", "DEBUG")
 
             # Preenche o CNPJ no campo de pesquisa do Destinatário
             fechar_popups_alerta(page, log_callback, nro_cotacao)
@@ -70,7 +74,9 @@ class LatamCompany(BaseCompany):
             # 2. Siga o fluxo normalmente: comparar com o valor de Remetente e selecionar
             destinatario_value = page.input_value(destinatario_selector)
 
-            if destinatario_value != remetente_value:
+            if not sincronizar_com_remetente:
+                log_callback(f"[F4] [Item {nro_cotacao}] Destinatário LogTudo selecionado por contingência.", "INFO")
+            elif destinatario_value != remetente_value:
                 log_callback(f"[F4] [Item {nro_cotacao}] AVISO: Destinatário diferente do Remetente. Tentando selecionar o valor exato do Remetente ('{remetente_text}')...", "AVISO")
                 try:
                     # Seleciona a opção com valor idêntico ao remetente

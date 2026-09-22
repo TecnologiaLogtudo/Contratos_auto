@@ -1,0 +1,553 @@
+PROCEDIMENTO OPERACIONAL - FLUXOS DE TRABALHO DE CONTRATOS
+Projeto: Contratos_auto
+Versao: 1.0
+Data: 22/09/2026
+
+
+1. OBJETIVO
+
+Definir como funcionam os processos executados nos fluxos de trabalho existentes
+para emissao de contratos no LogTudo.
+
+Este POP descreve o processo operacional de cada fluxo: entrada, decisao,
+execucao, resultado esperado e tratamento de excecoes. Nao e um manual de uso da
+automacao nem uma descricao tecnica de cada clique executado pelo robo.
+
+
+2. FLUXOS EXISTENTES
+
+Existem dois niveis de fluxo:
+
+1. Fluxo operacional do lote:
+   - Recebimento da planilha.
+   - Validacao e preparacao dos itens.
+   - Criacao do job/lote.
+   - Execucao item a item.
+   - Registro de sucesso, erro, logs e evidencias.
+   - Geracao do arquivo consolidado.
+
+2. Fluxos de negocio por remetente/modalidade:
+   - LATAM ou fluxo padrao.
+   - DPA / Dairy Partners.
+   - Lactalis Diaria Parada.
+   - Lactalis Pernoite / Diaria em Rota / Diaria no Cliente.
+   - Lactalis Diaria Garantida.
+
+O fluxo ativo principal usa o runner novo, com estrategias por remetente. Tambem
+existe um fluxo legado por fases, mantido no codigo para compatibilidade.
+
+
+3. ENTRADAS DO PROCESSO
+
+3.1. Planilha de entrada
+
+Formato aceito:
+- .xlsx
+- .xls
+
+Campos operacionais extraidos ou normalizados:
+- Numero da cotacao.
+- Categoria do veiculo.
+- Cidade e UF.
+- Nome do motorista.
+- Placa.
+- Data de pagamento.
+- Indicador de viagem extra.
+- Remetente.
+- Validade.
+- Frete a pagar.
+- Frete negociado.
+- Observacao interna, quando disponivel.
+
+3.2. Configuracoes operacionais
+
+Configuracoes usadas na execucao:
+- Usuario e senha do LogTudo.
+- Atraso entre fases.
+- Atraso entre etapas.
+- Km padrao para contrato.
+- Aceite automatico de frete minimo ANTT.
+- Execucao com navegador visivel ou em segundo plano.
+
+
+4. FLUXO OPERACIONAL DO LOTE
+
+4.1. Recebimento e validacao
+
+Gatilho:
+- Upload de uma planilha pelo operador.
+
+Processo:
+- O arquivo e salvo no storage do sistema.
+- O sistema valida extensao e leitura da planilha.
+- A planilha e normalizada quando vem em layout BSoft.
+- Linhas sem dados obrigatorios sao separadas como falha de validacao.
+- Linhas ja concluidas sao preservadas.
+- Itens pendentes ficam disponiveis para emissao.
+
+Saida:
+- Job criado.
+- Previa dos itens validos e invalidos.
+- Itens invalidos registrados com motivo.
+
+4.2. Inicio da execucao
+
+Gatilho:
+- Operador inicia o job informando credenciais.
+
+Processo:
+- O sistema verifica se ja existe outro lote em execucao.
+- O worker do job e iniciado.
+- O navegador e aberto.
+- O login no LogTudo e realizado uma vez para o lote.
+- Os itens pendentes sao processados em sequencia.
+
+Saida:
+- Job em status RUNNING.
+- Logs em tempo real.
+- Progresso por item.
+
+4.3. Processamento item a item
+
+Para cada item pendente:
+- Identifica o fluxo de negocio pelo remetente.
+- Executa a preparacao especifica, quando exigida.
+- Executa a fase de conhecimento.
+- Executa a fase de dados do frete.
+- Executa a fase de contrato.
+- Salva sucesso ou erro imediatamente.
+- Captura evidencia quando aplicavel.
+- Prossegue para o proximo item.
+
+Regra operacional:
+- Uma falha em um item nao encerra obrigatoriamente o lote.
+- O item com falha e registrado como erro.
+- A sessao e resetada antes do proximo item para evitar contaminacao do fluxo.
+
+4.4. Pausa, retomada e cancelamento
+
+Pausa:
+- A pausa e solicitada pelo operador.
+- O processo aguarda um ponto seguro, normalmente entre itens.
+- O status do job passa para PAUSED.
+
+Retomada:
+- O operador solicita continuar.
+- O job volta para RUNNING.
+- O processamento segue dos itens pendentes.
+
+Cancelamento:
+- O operador solicita cancelamento.
+- O worker interrompe a fila.
+- O job passa para CANCELLED.
+- Itens ainda nao processados permanecem pendentes.
+
+4.5. Finalizacao
+
+Ao final do lote:
+- O arquivo consolidado e gerado.
+- Sucessos vao para "Dados Processados".
+- Erros e falhas de validacao vao para "Contrato nao realizado".
+- Logs, screenshots, videos e artefatos ficam vinculados ao job.
+
+
+5. DECISAO DO FLUXO DE NEGOCIO
+
+A modalidade e escolhida pelo campo Remetente da planilha.
+
+Ordem de prioridade:
+1. DPA / Dairy Partners.
+2. Lactalis Pernoite / Diaria em Rota / Diaria no Cliente.
+3. Lactalis Diaria Garantida.
+4. Lactalis Diaria Parada.
+5. LATAM / Padrao.
+
+Regra:
+- Se nenhum remetente especializado for reconhecido, o sistema usa LATAM/PADRAO.
+
+
+6. FLUXO LATAM / PADRAO
+
+Quando aplica:
+- Remetente contem LATAM, TAM, CNPJ 02.012.862 ou nao se enquadra nos fluxos
+  especializados.
+
+Entrada minima esperada:
+- Cotacao.
+- Nome.
+- Placa.
+- Cidade/UF.
+- Data de pagamento.
+- Remetente.
+
+Processo executado:
+1. Acessa o formulario de conhecimento.
+2. Vincula a cotacao/pedido pelo numero da cotacao.
+3. Usa o numero da cotacao como complemento do pedido.
+4. Na etapa de frete, mantem o remetente selecionado pelo portal.
+5. Pesquisa o destinatario pelo CNPJ extraido do remetente.
+   - Se o remetente nao tiver CNPJ identificavel, pesquisa LogTudo pelo CNPJ
+     20511709000169.
+6. Configura cidade de origem a partir da cidade da planilha.
+7. Usa regra de frete padrao "Nao realiza calculos".
+8. Usa observacao PV baseada em motorista e placa.
+9. No contrato, usa data de pagamento como data final da viagem e data programada.
+10. Usa perfil de apropriacao pela cidade.
+11. Usa Km padrao da configuracao.
+12. Usa NCM padrao de vinho.
+13. Finaliza o contrato.
+
+Saida esperada:
+- Contrato emitido.
+- Item marcado como concluido.
+
+Excecoes comuns:
+- Destinatario LogTudo nao encontrado quando o remetente nao tiver CNPJ.
+- Motorista nao encontrado pela placa.
+- Perfil de apropriacao nao encontrado para a cidade.
+- Data de pagamento ausente.
+
+
+7. FLUXO DPA / DAIRY PARTNERS
+
+Quando aplica:
+- Remetente contem DPA, Dairy Partners, CNPJ 05.300.331 ou variacao sem pontuacao.
+
+Entrada minima esperada:
+- Cotacao.
+- Nome.
+- Placa.
+- Cidade/UF.
+- Validade.
+- Remetente.
+
+Processo executado:
+1. Segue a base operacional Lactalis.
+2. Na etapa de frete, seleciona remetente DPA pelo CNPJ 05.300.331/0014-85.
+3. Seleciona destinatario LogTudo pelo CNPJ 20.511.709/0001-69.
+4. Usa perfil de apropriacao "dpa BA".
+5. Usa NCM Lactalis/DPA: 0403.
+6. Usa Km 1.
+7. Calcula a data programada pela validade:
+   - validade ate dia 15: dia 05 do mes seguinte;
+   - validade apos dia 15: dia 20 do mes seguinte.
+8. Finaliza o contrato.
+
+Saida esperada:
+- Contrato emitido com regra e perfil DPA.
+
+Excecoes comuns:
+- Validade ausente.
+- Perfil "dpa BA" nao encontrado.
+- Remetente ou destinatario nao retornado na busca por CNPJ.
+
+
+8. FLUXO LACTALIS DIARIA PARADA
+
+Quando aplica:
+- Remetente Lactalis sem os marcadores de pernoite, diaria em rota, diaria no
+  cliente ou diaria garantida.
+
+Entrada minima esperada:
+- Cotacao.
+- Nome.
+- Placa.
+- Cidade/UF.
+- Validade.
+- Frete a pagar ou frete negociado.
+- Remetente.
+
+Processo executado:
+1. Acessa diretamente o formulario de conhecimento.
+2. Vincula a cotacao pelo numero da cotacao.
+3. Preenche complemento do pedido como "DIARIA PARADO".
+4. Na etapa de frete, seleciona remetente Lactalis pelo CNPJ 43.340.312/0006-61.
+5. Seleciona destinatario LogTudo pelo CNPJ 20.511.709/0001-69.
+6. Usa cidade de origem da planilha, com padronizacao de cidades.
+7. Usa regra de frete "Cotacao Varejo" ID 146.
+8. Preenche frete terceiros com frete negociado; se ausente, usa frete a pagar.
+9. Usa observacao PV baseada em motorista e placa.
+10. No contrato, usa a data de emissao do RF como fim de viagem.
+11. Usa perfil "lactalis BA".
+12. Usa Km 1.
+13. Usa NCM 0403.
+14. Usa observacao do contrato "DIARIA PARADA" acrescida da validade.
+15. Calcula a data programada pela validade:
+    - validade ate dia 15: dia 05 do mes seguinte;
+    - validade apos dia 15: dia 20 do mes seguinte.
+16. Finaliza o contrato.
+
+Saida esperada:
+- Contrato de diaria parada emitido.
+
+Excecoes comuns:
+- Validade ausente.
+- Frete negociado e frete a pagar ausentes ou invalidos.
+- Campo de frete terceiros indisponivel.
+- Perfil "lactalis BA" nao encontrado.
+
+
+9. FLUXO LACTALIS PERNOITE / DIARIA EM ROTA / DIARIA NO CLIENTE
+
+Quando aplica:
+- Remetente Lactalis contem pernoite, diaria em rota ou diaria no cliente.
+
+Entrada minima esperada:
+- Cotacao.
+- Nome.
+- Placa.
+- Cidade/UF.
+- Validade.
+- Observacao interna contendo pedido e NF.
+- Remetente.
+
+Processo executado:
+1. Antes do conhecimento, acessa a rotina de cotacoes de frete.
+2. Filtra a cotacao pelo numero da planilha.
+3. Abre o detalhe da cotacao.
+4. Extrai o numero real do pedido cliente.
+5. Extrai a observacao interna.
+6. Extrai o numero da NF da observacao interna.
+7. Abre um novo conhecimento manual.
+8. Na fase de conhecimento, vincula o pedido extraido.
+9. Vincula a NF extraida ao conhecimento.
+10. Preenche complemento do pedido como "Diaria no cliente".
+11. Na fase de frete, nao substitui remetente e destinatario; valida os dados
+    carregados pela NF e seleciona uma opcao disponivel se necessario.
+12. Usa cidade de origem "Simoes filho".
+13. Usa observacao PV igual a observacao interna extraida.
+14. Preenche Senha Ravex com o numero da cotacao.
+15. No contrato, usa data de emissao do RF como fim de viagem.
+16. Usa perfil "lactalis BA".
+17. Usa Km 1.
+18. Usa NCM 0403.
+19. Monta a observacao final a partir da observacao interna, trocando a data
+    antiga pela validade da planilha quando houver.
+20. Calcula a data programada pela validade.
+21. Finaliza o contrato.
+
+Saida esperada:
+- Contrato emitido com pedido real e NF vinculada.
+
+Excecoes comuns:
+- Cotacao nao encontrada na rotina de cotacoes.
+- Status da cotacao nao permite edicao.
+- Pedido cliente vazio.
+- Observacao interna vazia.
+- NF nao identificada na observacao.
+- NF nao retorna opcao selecionavel.
+
+
+10. FLUXO LACTALIS DIARIA GARANTIDA
+
+Quando aplica:
+- Remetente Lactalis contem diaria garantida.
+
+Entrada minima esperada:
+- Cotacao.
+- Nome.
+- Placa.
+- Cidade/UF.
+- Validade.
+- Observacao interna contendo pedido e NF.
+- Remetente.
+
+Processo executado:
+1. Executa a mesma preparacao do fluxo Lactalis especial:
+   - consulta cotacao;
+   - extrai pedido cliente;
+   - extrai observacao interna;
+   - extrai NF;
+   - abre conhecimento manual.
+2. Na fase de conhecimento, vincula pedido e NF extraidos.
+3. Preenche complemento do pedido como "Diaria Garantida".
+4. Na fase de frete, preserva remetente e destinatario vindos da NF.
+5. Usa cidade de origem "Simoes filho".
+6. Usa observacao PV igual a observacao interna extraida.
+7. Preenche Senha Ravex com o numero da cotacao.
+8. No contrato, usa perfil "lactalis BA", Km 1 e NCM 0403.
+9. Usa a observacao interna ajustada pela validade como observacao do contrato.
+10. Calcula a data programada pela validade.
+11. Finaliza o contrato.
+
+Saida esperada:
+- Contrato de diaria garantida emitido com pedido real e NF vinculada.
+
+Excecoes comuns:
+- As mesmas do fluxo de Pernoite/Diaria em Rota.
+- Complemento ou observacao interna divergente do esperado para diaria garantida.
+
+
+11. FASES OPERACIONAIS COMUNS
+
+11.1. Fase de conhecimento
+
+Executada para todos os fluxos.
+
+Processo:
+- Seleciona agencia LOGTUDO MATRIZ - BAHIA.
+- Seleciona talao Encarte Bahia.
+- Configura emissao de recibo conforme estrategia.
+- Pesquisa e vincula pedido/cotacao.
+- Vincula NF quando o fluxo exige.
+- Preenche complemento do pedido.
+- Avanca para a fase de frete.
+
+11.2. Fase de frete
+
+Executada para todos os fluxos.
+
+Processo:
+- Configura remetente e destinatario conforme fluxo.
+- Configura cidade de origem.
+- Seleciona natureza da operacao.
+- Busca motorista pela placa.
+- Seleciona transporte rodoviario e carga geral.
+- Aplica regra de frete.
+- Zera campos de frete/impostos quando aplicavel.
+- Preenche campos especificos, como frete terceiros ou Senha Ravex.
+- Preenche observacao PV.
+- Confirma ciencia de CTe com valor zerado.
+- Salva/avanca para contrato.
+
+11.3. Fase de contrato
+
+Executada para todos os fluxos.
+
+Processo:
+- Preenche data fim de viagem.
+- Seleciona perfil de apropriacao.
+- Preenche Km.
+- Seleciona NCM.
+- Seleciona composicao veicular.
+- Seleciona regra de carreto.
+- Preenche observacao do contrato.
+- Configura REPOM pos-pago, cartao e operacao sem CIOT.
+- Vincula remetente de contrato quando for viagem extra.
+- Vincula destinatario de contrato LogTudo.
+- Preenche data programada do saldo.
+- Aceita confirmacoes obrigatorias.
+- Salva o contrato.
+- Trata autorizacao de primeiro uso de CFOP quando aparecer.
+
+
+12. FLUXO DE ERRO E EVIDENCIA
+
+Quando ocorre erro em um item:
+- O motivo e registrado no item.
+- O item e marcado como ERRO.
+- Uma captura de tela pode ser salva.
+- A sessao e resetada.
+- O lote continua para o proximo item, salvo erro fatal ou cancelamento.
+
+Quando ocorre erro fatal no lote:
+- O job e marcado como FAILED ou estado equivalente.
+- O navegador e fechado.
+- Artefatos disponiveis sao preservados.
+- Logs ficam disponiveis para analise.
+
+
+13. FLUXO LEGADO
+
+O codigo ainda possui um fluxo legado por fases:
+- Fase 1: processamento da planilha.
+- Fase 2: login.
+- Fase 3: preenchimento do conhecimento.
+- Fase 4: dados do frete.
+- Fase 5: contrato de frete.
+
+Esse fluxo usa modulos em `backend/app/phases` e regras em
+`backend/app/companies`. Ele cobre os mesmos processos gerais, mas a arquitetura
+principal atual e o runner com page objects e strategies.
+
+Regra operacional:
+- Em manutencoes futuras, confirmar qual entrada esta ativa no ambiente antes de
+  alterar regras de negocio.
+
+
+14. SAIDAS DO PROCESSO
+
+Ao concluir ou interromper um lote, o sistema pode gerar:
+- Planilha consolidada do job.
+- Aba "Dados Processados".
+- Aba "Contrato nao realizado".
+- Logs estruturados.
+- Screenshots de sucesso, erro ou diagnostico.
+- Videos/traces de execucao, quando habilitados.
+- Historico do job no banco local.
+
+
+15. CONTROLES OPERACIONAIS
+
+Antes de iniciar:
+- Confirmar que a planilha tem itens pendentes.
+- Confirmar login e senha.
+- Confirmar que nao existe outro lote rodando.
+- Confirmar que campos obrigatorios foram validados.
+
+Durante a execucao:
+- Acompanhar logs e progresso.
+- Pausar somente quando necessario.
+- Nao fechar o navegador quando estiver visivel.
+
+Depois da execucao:
+- Baixar ou consultar a planilha consolidada.
+- Verificar itens em erro.
+- Analisar screenshots/logs dos itens com falha.
+- Reprocessar apenas itens pendentes ou corrigidos.
+
+
+16. RESUMO DAS DIFERENCAS POR FLUXO
+
+LATAM / Padrao:
+- Pedido: cotacao da planilha.
+- Destinatario: pesquisado pelo CNPJ do remetente; se nao houver CNPJ, pesquisa
+  LogTudo pelo CNPJ 20511709000169.
+- Perfil: cidade.
+- Km: configuracao padrao.
+- NCM: vinho / 2204.
+- Data programada: data de pagamento.
+
+DPA:
+- Pedido: cotacao da planilha.
+- Remetente: DPA por CNPJ.
+- Destinatario: LogTudo.
+- Perfil: dpa BA.
+- Km: 1.
+- NCM: 0403.
+- Data programada: calculada pela validade.
+
+Lactalis Diaria Parada:
+- Pedido: cotacao da planilha.
+- Complemento: DIARIA PARADO.
+- Remetente: Lactalis por CNPJ.
+- Destinatario: LogTudo.
+- Perfil: lactalis BA.
+- Km: 1.
+- NCM: 0403.
+- Frete terceiros: frete negociado ou frete a pagar.
+- Data programada: calculada pela validade.
+
+Lactalis Pernoite / Diaria em Rota / Diaria no Cliente:
+- Pedido: extraido da cotacao no LogTudo.
+- NF: extraida da observacao interna.
+- Complemento: Diaria no cliente.
+- Remetente/Destinatario: preservados da NF.
+- Cidade origem: Simoes filho.
+- Perfil: lactalis BA.
+- Km: 1.
+- NCM: 0403.
+- Observacao: observacao interna ajustada.
+- Data programada: calculada pela validade.
+
+Lactalis Diaria Garantida:
+- Pedido: extraido da cotacao no LogTudo.
+- NF: extraida da observacao interna.
+- Complemento: Diaria Garantida.
+- Remetente/Destinatario: preservados da NF.
+- Cidade origem: Simoes filho.
+- Perfil: lactalis BA.
+- Km: 1.
+- NCM: 0403.
+- Observacao: observacao interna ajustada.
+- Data programada: calculada pela validade.

@@ -166,7 +166,8 @@ class FretePage:
             cnpj = re.sub(r'\D', '', cnpj_match.group(0)) if cnpj_match else re.sub(r'\D', '', rem_text)[:14]
 
             if not cnpj or len(cnpj) < 8:
-                self.log(f"[F4] [Item {nro}] Aviso: CNPJ não identificado do Remetente ('{rem_text}').", "AVISO")
+                self.log(f"[F4] [Item {nro}] Aviso: CNPJ não identificado do Remetente ('{rem_text}'). Pesquisando Destinatário LogTudo.", "AVISO")
+                self._selecionar_destinatario_por_cnpj("20511709000169", item, delay_step)
                 return
 
             self._selecionar_destinatario_por_cnpj(cnpj, item, delay_step, fallback_value=rem_val)
