@@ -8,6 +8,7 @@ from playwright.sync_api import Page, TimeoutError as PlaywrightTimeoutError
 from ...domain.models import ItemContrato
 from ...domain.errors import FormFillError, NavigationError
 from ..dialog_guard import DialogGuard
+from ..select_wait import wait_for_valid_select_options
 from ..strategies.base_strategy import BaseStrategy
 from ..strategies.lactalis_strategy import LactalisBaseStrategy, LactalisSpecialBaseStrategy
 from ..strategies.dpa_strategy import DPAStrategy
@@ -289,37 +290,14 @@ class FretePage:
                 self.page.locator('i[name="botaoPesquisa_cMunIni"]').click()
 
                 cid_sel = self.page.locator('select[name="dados_cMunIni"]')
-                cid_sel.wait_for(state="attached", timeout=6000)
-
-                # Aguarda o retorno do AJAX (até 8 segundos)
-                deadline = time.time() + 8.0
-                options = []
-                while time.time() < deadline:
-                    DialogGuard.dismiss_all_popups(self.page, self.log, f"Item {nro}")
-                    options = cid_sel.locator("option").all()
-                    texts = [opt.inner_text().strip() for opt in options]
-
-                    # Se ainda estiver vazio ou indicando carregamento, aguarda
-                    if not options or any("carregando" in t.lower() for t in texts):
-                        time.sleep(0.3)
-                        continue
-
-                    # Se explicitamente retornou 'Nenhum registro encontrado!', passa para a próxima tentativa
-                    if any("nenhum registro" in t.lower() for t in texts) or (cid_sel.get_attribute("title") or "").strip() == "Nenhum registro encontrado!":
-                        break
-
-                    # Se encontrou opções com value não vazio, conclui espera
-                    valid_opts = [opt for opt in options if (opt.get_attribute("value") or "").strip()]
-                    if valid_opts:
-                        break
-
-                    time.sleep(0.3)
-
-                texts = [opt.inner_text().strip() for opt in options]
-                if any("nenhum registro" in t.lower() for t in texts):
+                valid_opts, texts, not_found = wait_for_valid_select_options(
+                    cid_sel,
+                    dismiss=lambda: DialogGuard.dismiss_all_popups(self.page, self.log, f"Item {nro}"),
+                    option_matches=lambda opt, cid=cid: cid.lower() in opt.inner_text().strip().lower(),
+                )
+                if not_found:
                     continue
 
-                valid_opts = [opt for opt in options if (opt.get_attribute("value") or "").strip()]
                 if valid_opts:
                     chosen_val = None
                     for opt in valid_opts:

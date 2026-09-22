@@ -5,6 +5,7 @@ from typing import Callable, Dict
 import re
 import unicodedata
 from ..companies import get_company
+from ..engine.select_wait import wait_for_valid_select_options
 from .dialog_helper import fechar_popups_alerta
 
 
@@ -127,38 +128,20 @@ def preencher_frete(
                 cidade_selector = 'select[name="dados_cMunIni"]'
                 cid_sel = page.locator(cidade_selector)
 
-                # Aguarda o retorno do AJAX (até 10 segundos)
-                deadline = time.time() + 10.0
-                options = []
-                while time.time() < deadline:
-                    _fechar_popups_alerta(page, log_callback, nro_cotacao)
-                    options = cid_sel.locator("option").all()
-                    texts = [opt.inner_text().strip() for opt in options]
-
-                    if not options or any("carregando" in t.lower() for t in texts):
-                        time.sleep(0.3)
-                        continue
-
-                    if any("nenhum registro" in t.lower() for t in texts) or (cid_sel.get_attribute("title") or "").strip() == "Nenhum registro encontrado!":
-                        break
-
-                    valid_opts = [opt for opt in options if (opt.get_attribute("value") or "").strip()]
-                    if valid_opts:
-                        break
-
-                    time.sleep(0.3)
-
-                all_option_texts = [opt.inner_text().strip() for opt in options if opt.inner_text().strip()]
+                valid_options, all_option_texts, not_found = wait_for_valid_select_options(
+                    cid_sel,
+                    dismiss=lambda: _fechar_popups_alerta(page, log_callback, nro_cotacao),
+                    option_matches=lambda opt: city_name.lower() in opt.inner_text().strip().lower(),
+                )
                 log_callback(f"[F4] [Item {nro_cotacao}] Opções de cidade encontradas para '{city_name}': {all_option_texts}", "DEBUG")
 
-                if any("nenhum registro" in opt.inner_text().lower() for opt in options):
+                if not_found:
                     return False # City not found
 
                 cidade_selecionada = False
                 selected_value = None
                 selected_option_text = ""
 
-                valid_options = [opt for opt in options if (opt.get_attribute("value") or "").strip()]
                 for opt in valid_options:
                     option_text = opt.inner_text().strip()
                     if option_text.lower() == city_name.lower():
