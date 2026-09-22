@@ -124,22 +124,42 @@ def preencher_frete(
                 time.sleep(atraso_etapas)
                 page.click('i[name="botaoPesquisa_cMunIni"]')
                 
-                cidade_selector = 'select[name="dados_cMunIni"]';
-                page.wait_for_selector(f'{cidade_selector} option[value]:not([value=""])', state='attached', timeout=10000)
-                
-                options = page.locator(cidade_selector).locator("option").all()
-                
+                cidade_selector = 'select[name="dados_cMunIni"]'
+                cid_sel = page.locator(cidade_selector)
+
+                # Aguarda o retorno do AJAX (até 10 segundos)
+                deadline = time.time() + 10.0
+                options = []
+                while time.time() < deadline:
+                    _fechar_popups_alerta(page, log_callback, nro_cotacao)
+                    options = cid_sel.locator("option").all()
+                    texts = [opt.inner_text().strip() for opt in options]
+
+                    if not options or any("carregando" in t.lower() for t in texts):
+                        time.sleep(0.3)
+                        continue
+
+                    if any("nenhum registro" in t.lower() for t in texts) or (cid_sel.get_attribute("title") or "").strip() == "Nenhum registro encontrado!":
+                        break
+
+                    valid_opts = [opt for opt in options if (opt.get_attribute("value") or "").strip()]
+                    if valid_opts:
+                        break
+
+                    time.sleep(0.3)
+
                 all_option_texts = [opt.inner_text().strip() for opt in options if opt.inner_text().strip()]
                 log_callback(f"[F4] [Item {nro_cotacao}] Opções de cidade encontradas para '{city_name}': {all_option_texts}", "DEBUG")
 
-                if any("Nenhum registro encontrado!" in opt.inner_text() for opt in options):
+                if any("nenhum registro" in opt.inner_text().lower() for opt in options):
                     return False # City not found
 
                 cidade_selecionada = False
                 selected_value = None
                 selected_option_text = ""
 
-                for opt in options:
+                valid_options = [opt for opt in options if (opt.get_attribute("value") or "").strip()]
+                for opt in valid_options:
                     option_text = opt.inner_text().strip()
                     if option_text.lower() == city_name.lower():
                         selected_value = opt.get_attribute("value")
@@ -147,12 +167,16 @@ def preencher_frete(
                         break
                 
                 if not selected_value:
-                    for opt in options:
+                    for opt in valid_options:
                         option_text = opt.inner_text().strip()
-                        if option_text.lower().startswith(city_name.lower()):
+                        if option_text.lower().startswith(city_name.lower()) or city_name.lower() in option_text.lower():
                             selected_value = opt.get_attribute("value")
                             selected_option_text = option_text
                             break
+
+                if not selected_value and valid_options:
+                    selected_value = valid_options[0].get_attribute("value")
+                    selected_option_text = valid_options[0].inner_text().strip()
 
                 if selected_value:
                     page.select_option(cidade_selector, value=selected_value)

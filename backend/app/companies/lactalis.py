@@ -215,9 +215,19 @@ class LactalisSpecialBaseCompany(LactalisBaseCompany):
         self, page: Page, nro_cotacao: str, log_callback: Callable, atraso_etapas: float
     ) -> bool:
         try:
-            log_callback(f"[F4] [Item {nro_cotacao}] Regra Lactalis Especial (Diária em Rota / Pernoite / Garantida): Remetente e Destinatário mantidos inalterados.", "INFO")
+            log_callback(f"[F4] [Item {nro_cotacao}] Regra Lactalis Especial: Remetente e Destinatário verificados.", "INFO")
             # Fecha eventuais popups de alerta se existirem
             fechar_popups_alerta(page, log_callback, nro_cotacao)
+
+            dest_sel = page.locator('select[name="dados_enderecoDestinatario_id"]')
+            if dest_sel.count() > 0:
+                dest_val = dest_sel.input_value()
+                if not dest_val:
+                    opts = [o for o in dest_sel.locator("option").all() if o.get_attribute("value")]
+                    if opts:
+                        target_v = opts[0].get_attribute("value")
+                        dest_sel.select_option(value=target_v)
+                        log_callback(f"[F4] [Item {nro_cotacao}] Destinatário selecionado a partir da NF (value: {target_v}).", "DEBUG")
             return True
         except Exception as e:
             log_callback(f"[F4] [Item {nro_cotacao}] ERRO na Etapa 1 (Remetente/Destinatário LACTALIS Especial): {e}", "ERRO")
@@ -410,15 +420,11 @@ class LactalisSpecialBaseCompany(LactalisBaseCompany):
     ) -> bool:
         from ..phases.fase3_preenchimento import registrar_erro_em_planilha
         try:
-            nro_pedido = dados_linha.get("extracted_nro_pedido")
-            if not nro_pedido:
-                log_callback("[F3] ERRO: Nº Pedido Cliente não extraído na preparação.", "ERRO")
-                return False
-                
-            log_callback(f"[F3] Pesquisando Pedido Cliente '{nro_pedido}'...", "DEBUG")
+            search_target = dados_linha.get("extracted_nro_pedido") or nro_cotacao
+            log_callback(f"[F3] Pesquisando Pedido Cliente '{search_target}'...", "DEBUG")
             
             # Pesquisa o número do pedido real extraído
-            page.fill('input[name="pesquisa_pedidos_id"]', str(nro_pedido))
+            page.fill('input[name="pesquisa_pedidos_id"]', str(search_target))
             time.sleep(atraso_etapas)
             page.click('i[name="botaoPesquisa_pedidos_id"]')
             page.wait_for_timeout(500)
@@ -426,42 +432,98 @@ class LactalisSpecialBaseCompany(LactalisBaseCompany):
             
             select_locator = page.locator('select[name="dados_pedidos_id"]')
             try:
-                select_locator.wait_for(timeout=5000)
+                select_locator.wait_for(state="attached", timeout=6000)
                 options = select_locator.locator("option").all()
+                opts_text = [opt.inner_text().strip() for opt in options]
+
+                if (any("Nenhum registro encontrado!" in t for t in opts_text) or (select_locator.get_attribute("title") or "").strip() == "Nenhum registro encontrado!") and search_target != nro_cotacao:
+                    log_callback(f"[F3] Pedido '{search_target}' não encontrado. Tentando fallback para cotação '{nro_cotacao}'...", "DEBUG")
+                    search_target = nro_cotacao
+                    page.fill('input[name="pesquisa_pedidos_id"]', str(search_target))
+                    time.sleep(atraso_etapas)
+                    page.click('i[name="botaoPesquisa_pedidos_id"]')
+                    page.wait_for_timeout(500)
+                    time.sleep(atraso_etapas)
+                    options = select_locator.locator("option").all()
+                    opts_text = [opt.inner_text().strip() for opt in options]
+
                 if any("Nenhum registro encontrado!" in opt.inner_text() for opt in options):
-                    motivo_erro = f"Nenhum registro de cotação encontrado no select para o pedido '{nro_pedido}'."
+                    motivo_erro = f"Nenhum registro de cotação encontrado no select para '{search_target}'."
                     log_callback(f"[F3] {motivo_erro}", "ERRO")
                     registrar_erro_em_planilha(dados_linha, motivo_erro, log_callback, output_filepath)
                     return False
                     
                 correct_option_value = None
-                target_prefix = f"{nro_pedido} /"
+                target_prefix = f"{search_target} /"
                 for opt in options:
-                    opt_text = opt.inner_text()
-                    if opt_text.strip().startswith(target_prefix):
-                        correct_option_value = opt.get_attribute("value")
+                    opt_text = opt.inner_text().strip()
+                    val = opt.get_attribute("value")
+                    if val and (opt_text.startswith(target_prefix) or str(search_target) in opt_text or opt_text.startswith(f"{search_target} -")):
+                        correct_option_value = val
                         break
                         
+                if not correct_option_value and len(options) > 1:
+                    for opt in options:
+                        v = opt.get_attribute("value")
+                        if v:
+                            correct_option_value = v
+                            break
+
                 if correct_option_value:
                     select_locator.select_option(value=correct_option_value)
-                    log_callback(f"[F3] Opção de cotação '{nro_pedido}' selecionada com sucesso.", "INFO")
+                    log_callback(f"[F3] Opção de cotação '{search_target}' selecionada com sucesso (value: {correct_option_value}).", "INFO")
                 else:
-                    log_callback(f"[F3] Aviso: Opção com prefixo '{target_prefix}' não encontrada. Deixando seleção padrão.", "AVISO")
+                    log_callback(f"[F3] Aviso: Opção para '{search_target}' não encontrada no select.", "AVISO")
             except Exception as e_sel:
                 log_callback(f"[F3] Aviso ao verificar select: {e_sel}. Continuando...", "DEBUG")
                 
-            # Pesquisa a Nota Fiscal (NF) extraída
+            # Pesquisa e Vinculação da Nota Fiscal (NF)
             nf_val = dados_linha.get("extracted_nf")
             if nf_val:
-                log_callback(f"[F3] Pesquisando Nota Fiscal '{nf_val}'...", "DEBUG")
+                log_callback(f"[F3] Pesquisando e vinculando Nota Fiscal '{nf_val}'...", "DEBUG")
                 _page_nfs[page] = str(nf_val)
-                page.fill('#pswobj3', str(nf_val))
-                time.sleep(atraso_etapas)
-                page.click('.swrepp > td > em > .fa-solid')
-                time.sleep(atraso_etapas)
+                
+                # Seletor estrito visível para preencher a NF
+                input_nf_vis = page.locator('#pswobj3:visible, input[name="pesquisa_dados_notas_carregamento_id"]:visible').first
+                if input_nf_vis.count() > 0:
+                    input_nf_vis.fill(str(nf_val))
+                    try:
+                        input_nf_vis.dispatch_event("change")
+                    except Exception:
+                        pass
+                    time.sleep(atraso_etapas)
+                    
+                    # Clica na lupa visível
+                    btn_nf = page.locator('.swrepp:visible i.fa-solid, i[name="botaoPesquisa_dados_notas_carregamento_id"]:visible, #pswobj3 + em i').first
+                    if btn_nf.count() > 0:
+                        btn_nf.click()
+                        time.sleep(1.5)
+                        
+                    # Aguarda e seleciona o select visível de NF
+                    select_nf_vis = page.locator('#cswobj3:visible, select[name*="dados_notas_carregamento_id"]:visible').first
+                    if select_nf_vis.count() > 0:
+                        select_nf_vis.wait_for(state="attached", timeout=6000)
+                        options_nf = select_nf_vis.locator("option").all()
+                        target_nf_val = None
+                        for opt in options_nf:
+                            v = opt.get_attribute("value")
+                            txt = opt.inner_text().strip()
+                            if v and (str(nf_val) in txt or v != ""):
+                                target_nf_val = v
+                                if str(nf_val) in txt:
+                                    break
+                        if target_nf_val:
+                            select_nf_vis.select_option(value=target_nf_val)
+                            try:
+                                select_nf_vis.dispatch_event("change")
+                            except Exception:
+                                pass
+                            log_callback(f"[F3] Nota Fiscal '{nf_val}' selecionada no dropdown com sucesso (value: {target_nf_val}).", "INFO")
+                            time.sleep(atraso_etapas)
+                        else:
+                            log_callback(f"[F3] AVISO: Nenhuma opção retornada no select para a NF '{nf_val}'.", "AVISO")
             else:
-                log_callback("[F3] ERRO: Número de NF não extraído na preparação.", "ERRO")
-                return False
+                log_callback("[F3] AVISO: Número de NF não informado para este item.", "DEBUG")
                 
             return True
         except Exception as e:

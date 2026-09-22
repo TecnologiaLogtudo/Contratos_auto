@@ -426,14 +426,10 @@ class AutomacaoUI:
             sheet = workbook.active
             
             headers_encontrados = [cell.value for cell in sheet[1]]
-            # CORREÇÃO: A lista de cabeçalhos esperados deve corresponder exatamente à criada na Fase 1.
-            headers_esperados = ["Nro cotação", "Categoria veículo", "Cidade", "UF", "Nome", "Placa", "Data pagamento", "Viagem extra", "Remetente", "Status"]
-            
-            # Compara os cabeçalhos (ignorando células extras vazias)
             headers_limpos = [h for h in headers_encontrados if h is not None]
             
-            # A verificação agora é simples: os cabeçalhos limpos devem ser iguais aos esperados.
-            return headers_limpos == headers_esperados
+            # Aceita se contiver as colunas essenciais do formato tratado
+            return all(h in headers_limpos for h in ["Nro cotação", "Nome", "Placa", "Status"])
         except PermissionError as e:
             # Erro específico de permissão. É importante parar aqui.
             self.log(f"[F0] ERRO DE PERMISSÃO ao verificar a planilha '{os.path.basename(filepath)}'.", "ERRO")
@@ -565,6 +561,13 @@ class AutomacaoUI:
                 self.status_var.set(f"Executando: Item {i}/{len(dados_para_processar)} (Cotação: {nro_cotacao})")
                 
                 try:
+                    # Se a NF ainda não estiver preenchida no dicionário do item, extrai do portal
+                    from backend.app.companies import get_company
+                    company = get_company(str(item_dados.get("Remetente", "")))
+                    if not item_dados.get("extracted_nf") and hasattr(company, "preparar_dados_cotacao"):
+                        self.log(f"[Prep] [Item {nro_cotacao}] Extraindo dados e NF da cotação no portal...", "DEBUG")
+                        company.preparar_dados_cotacao(self.page, item_dados, self.log, atraso_etapas)
+
                     # --- FASE 3: PREENCHIMENTO BÁSICO ---
                     sucesso_fase_3 = fase3_preenchimento.preencher_formulario(
                         self.page, item_dados, self.log, self.pause_event, self.planilha_processada_path, atraso_etapas, atraso_fases

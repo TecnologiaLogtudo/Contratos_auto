@@ -65,7 +65,7 @@ def processar_planilha(filepath: str, log_callback: Callable) -> str | None:
         ws_out = wb_out.active
         ws_out.title = "Dados Processados"
 
-        headers = ["Nro cotação", "Categoria veículo", "Cidade", "UF", "Nome", "Placa", "Data pagamento", "Viagem extra", "Remetente", "Validade", "Frete a pagar", "Frete negociado", "Status"]
+        headers = ["Nro cotação", "Categoria veículo", "Cidade", "UF", "Nome", "Placa", "Data pagamento", "Viagem extra", "Remetente", "Validade", "Frete a pagar", "Frete negociado", "Status", "extracted_obs_interna", "extracted_nro_pedido", "extracted_nf"]
         ws_out.append(headers)
 
         # Aba para contratos não realizados
@@ -151,6 +151,14 @@ def _ler_com_openpyxl(filepath: str, ws_out: openpyxl.worksheet.worksheet.Worksh
                 if company.require_validade() and (not validade_raw or str(validade_raw).strip() == ""):
                     erros.append("Validade")
 
+                # Extrai metadados do texto bruto de observação
+                obs_str = str(nome_placa_raw or "").strip()
+                nf_m = re.search(r'(?:nf|nfe|danfe)[-:\s]*(\d+)', obs_str, re.IGNORECASE)
+                extracted_nf = nf_m.group(1) if nf_m else ""
+                ped_m = re.search(r'(?:pernoite|pedido|ped)[-:\s]*(\d+)', obs_str, re.IGNORECASE)
+                extracted_nro_pedido = ped_m.group(1) if ped_m else ""
+                extracted_obs_interna = obs_str
+
                 linha_base = [nro_cotacao, categoria, cidade, uf, nome, placa, data_pagamento]
 
                 if erros:
@@ -158,7 +166,7 @@ def _ler_com_openpyxl(filepath: str, ws_out: openpyxl.worksheet.worksheet.Worksh
                     ws_nao_realizado.append(linha_base + [observacao, "Falha na Validação"])
                     log_callback(f"[F1] Linha {row_idx}: Movida para 'Contrato não realizado'. Motivo: {observacao}", "AVISO")
                 else:
-                    ws_out.append(linha_base + [viagem_extra, remetente, validade_raw, frete_pagar_raw, frete_negociado_raw, "Pendente"])
+                    ws_out.append(linha_base + [viagem_extra, remetente, validade_raw, frete_pagar_raw, frete_negociado_raw, "Pendente", extracted_obs_interna, extracted_nro_pedido, extracted_nf])
 
             except IndexError:
                 log_callback(f"[F1] Erro ao ler colunas na linha {row_idx}. A linha pode ser mais curta que o esperado.", "AVISO")
@@ -230,6 +238,14 @@ def _ler_com_xlrd(filepath: str, ws_out: openpyxl.worksheet.worksheet.Worksheet,
                 if company.require_validade() and (not validade_raw or str(validade_raw).strip() == ""):
                     erros.append("Validade")
 
+                # Extrai metadados do texto bruto de observação
+                obs_str = str(nome_placa_raw or "").strip()
+                nf_m = re.search(r'(?:nf|nfe|danfe)[-:\s]*(\d+)', obs_str, re.IGNORECASE)
+                extracted_nf = nf_m.group(1) if nf_m else ""
+                ped_m = re.search(r'(?:pernoite|pedido|ped)[-:\s]*(\d+)', obs_str, re.IGNORECASE)
+                extracted_nro_pedido = ped_m.group(1) if ped_m else ""
+                extracted_obs_interna = obs_str
+
                 linha_base = [nro_cotacao, categoria, cidade, uf, nome, placa, data_pagamento]
 
                 if erros:
@@ -237,7 +253,7 @@ def _ler_com_xlrd(filepath: str, ws_out: openpyxl.worksheet.worksheet.Worksheet,
                     ws_nao_realizado.append(linha_base + [observacao, "Falha na Validação"])
                     log_callback(f"[F1] Linha {row_idx + 1}: Movida para 'Contrato não realizado'. Motivo: {observacao}", "AVISO")
                 else:
-                    ws_out.append(linha_base + [viagem_extra, remetente, validade_raw, frete_pagar_raw, frete_negociado_raw, "Pendente"])
+                    ws_out.append(linha_base + [viagem_extra, remetente, validade_raw, frete_pagar_raw, frete_negociado_raw, "Pendente", extracted_obs_interna, extracted_nro_pedido, extracted_nf])
 
             except IndexError:
                 log_callback(f"[F1] Erro ao ler colunas na linha {row_idx + 1}. A linha pode ser mais curta que o esperado.", "AVISO")

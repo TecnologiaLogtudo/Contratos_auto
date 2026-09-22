@@ -184,9 +184,23 @@ class FretePage:
 
             rem_sel = self.page.locator('select[name="dados_enderecoRemetente_id"]')
             rem_sel.wait_for(state="attached", timeout=8000)
-            options = rem_sel.locator("option").all()
-            valid_opts = [opt for opt in options if opt.get_attribute("value")]
 
+            # Aguarda o retorno do AJAX (até 10 segundos)
+            deadline = time.time() + 10.0
+            options = []
+            while time.time() < deadline:
+                DialogGuard.dismiss_all_popups(self.page, self.log, f"Item {nro}")
+                options = rem_sel.locator("option").all()
+                texts = [opt.inner_text().strip() for opt in options]
+                if not options or any("carregando" in t.lower() for t in texts):
+                    time.sleep(0.3)
+                    continue
+                valid_opts = [opt for opt in options if (opt.get_attribute("value") or "").strip()]
+                if valid_opts or any("nenhum registro" in t.lower() for t in texts):
+                    break
+                time.sleep(0.3)
+
+            valid_opts = [opt for opt in options if (opt.get_attribute("value") or "").strip()]
             if not valid_opts:
                 raise FormFillError(f"Remetente com CNPJ '{cnpj}' não encontrado.", field_name="dados_enderecoRemetente_id", step="Fase 4")
 
@@ -208,8 +222,23 @@ class FretePage:
 
             dest_sel = self.page.locator('select[name="dados_enderecoDestinatario_id"]')
             dest_sel.wait_for(state="attached", timeout=8000)
-            options = dest_sel.locator("option").all()
-            valid_opts = [opt for opt in options if opt.get_attribute("value")]
+
+            # Aguarda o retorno do AJAX (até 10 segundos)
+            deadline = time.time() + 10.0
+            options = []
+            while time.time() < deadline:
+                DialogGuard.dismiss_all_popups(self.page, self.log, f"Item {nro}")
+                options = dest_sel.locator("option").all()
+                texts = [opt.inner_text().strip() for opt in options]
+                if not options or any("carregando" in t.lower() for t in texts):
+                    time.sleep(0.3)
+                    continue
+                valid_opts = [opt for opt in options if (opt.get_attribute("value") or "").strip()]
+                if valid_opts or any("nenhum registro" in t.lower() for t in texts):
+                    break
+                time.sleep(0.3)
+
+            valid_opts = [opt for opt in options if (opt.get_attribute("value") or "").strip()]
 
             if not valid_opts:
                 if fallback_value:
@@ -261,14 +290,47 @@ class FretePage:
 
                 cid_sel = self.page.locator('select[name="dados_cMunIni"]')
                 cid_sel.wait_for(state="attached", timeout=6000)
-                options = cid_sel.locator("option").all()
 
-                if any("Nenhum registro encontrado!" in opt.inner_text() for opt in options):
+                # Aguarda o retorno do AJAX (até 8 segundos)
+                deadline = time.time() + 8.0
+                options = []
+                while time.time() < deadline:
+                    DialogGuard.dismiss_all_popups(self.page, self.log, f"Item {nro}")
+                    options = cid_sel.locator("option").all()
+                    texts = [opt.inner_text().strip() for opt in options]
+
+                    # Se ainda estiver vazio ou indicando carregamento, aguarda
+                    if not options or any("carregando" in t.lower() for t in texts):
+                        time.sleep(0.3)
+                        continue
+
+                    # Se explicitamente retornou 'Nenhum registro encontrado!', passa para a próxima tentativa
+                    if any("nenhum registro" in t.lower() for t in texts) or (cid_sel.get_attribute("title") or "").strip() == "Nenhum registro encontrado!":
+                        break
+
+                    # Se encontrou opções com value não vazio, conclui espera
+                    valid_opts = [opt for opt in options if (opt.get_attribute("value") or "").strip()]
+                    if valid_opts:
+                        break
+
+                    time.sleep(0.3)
+
+                texts = [opt.inner_text().strip() for opt in options]
+                if any("nenhum registro" in t.lower() for t in texts):
                     continue
 
-                valid_opts = [opt for opt in options if opt.get_attribute("value")]
+                valid_opts = [opt for opt in options if (opt.get_attribute("value") or "").strip()]
                 if valid_opts:
-                    cid_sel.select_option(value=valid_opts[0].get_attribute("value"))
+                    chosen_val = None
+                    for opt in valid_opts:
+                        t = opt.inner_text().strip().lower()
+                        if t.startswith(cid.lower()) or cid.lower() in t:
+                            chosen_val = opt.get_attribute("value")
+                            break
+                    if not chosen_val:
+                        chosen_val = valid_opts[0].get_attribute("value")
+
+                    cid_sel.select_option(value=chosen_val)
                     self.log(f"[F4] [Item {nro}] Município de Origem '{cid}' selecionado.", "DEBUG")
                     cidade_ok = True
                     break
