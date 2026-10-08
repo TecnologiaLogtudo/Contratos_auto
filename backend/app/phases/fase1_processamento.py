@@ -130,6 +130,14 @@ def _ler_com_openpyxl(filepath: str, ws_out: openpyxl.worksheet.worksheet.Worksh
                 categoria = row[10]
                 cidade_uf_raw = row[12]
                 nome_placa_raw = row[22]
+                if (nome_placa_raw is None or str(nome_placa_raw).strip() == "") and len(row) > 21:
+                    alt_val = row[21]
+                    if alt_val and PLACA_REGEX.search(str(alt_val)):
+                        nome_placa_raw = alt_val
+                if (cidade_uf_raw is None or str(cidade_uf_raw).strip() == "" or isinstance(cidade_uf_raw, (int, float))) and len(row) > 11:
+                    alt_cid = row[11]
+                    if alt_cid and "/" in str(alt_cid):
+                        cidade_uf_raw = alt_cid
                 remetente_raw = row[REMETENTE_COLUMN_INDEX] if REMETENTE_COLUMN_INDEX < len(row) else None
                 validade_raw = row[6] if len(row) > 6 else None
                 frete_pagar_raw = row[16] if len(row) > 16 else None
@@ -217,6 +225,14 @@ def _ler_com_xlrd(filepath: str, ws_out: openpyxl.worksheet.worksheet.Worksheet,
                 categoria = _get_merged_cell_value(sheet, row_idx, 10)
                 cidade_uf_raw = _get_merged_cell_value(sheet, row_idx, 12)
                 nome_placa_raw = _get_merged_cell_value(sheet, row_idx, 22)
+                if (nome_placa_raw is None or str(nome_placa_raw).strip() == "") and sheet.ncols > 21:
+                    alt_val = _get_merged_cell_value(sheet, row_idx, 21)
+                    if alt_val and PLACA_REGEX.search(str(alt_val)):
+                        nome_placa_raw = alt_val
+                if (cidade_uf_raw is None or str(cidade_uf_raw).strip() == "" or isinstance(cidade_uf_raw, (int, float))) and sheet.ncols > 11:
+                    alt_cid = _get_merged_cell_value(sheet, row_idx, 11)
+                    if alt_cid and "/" in str(alt_cid):
+                        cidade_uf_raw = alt_cid
                 remetente_raw = _get_merged_cell_value(sheet, row_idx, REMETENTE_COLUMN_INDEX) if REMETENTE_COLUMN_INDEX < sheet.ncols else None
                 validade_raw = _get_merged_cell_value(sheet, row_idx, 6) if sheet.ncols > 6 else None
                 frete_pagar_raw = _get_merged_cell_value(sheet, row_idx, 16) if sheet.ncols > 16 else None
@@ -364,8 +380,8 @@ def _processar_nome_placa(raw_string: any, line_num: int, log_callback: Callable
         nome_limpo = re.sub(r'(as|às)\s+(?=\d{1,2}:\d{2}|\d{1,2}h\d{2}|\d{1,2}h(?!\d)|h(?!\w))', '', nome_limpo, flags=re.IGNORECASE)
         # 2. Remove os padrões de tempo restantes e outras palavras-chave.
         nome_limpo = NOME_CLEANUP_REGEX.sub('', nome_limpo)
-        # 3. Remove hífens
-        nome_limpo = nome_limpo.replace('-', '')
+        # 3. Remove hífens e pipes delimitadores
+        nome_limpo = nome_limpo.replace('-', '').replace('|', '')
         # 4. Remove espaços duplos/múltiplos
         nome_limpo = re.sub(r'\s+', ' ', nome_limpo).strip()
         

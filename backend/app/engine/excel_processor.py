@@ -122,7 +122,7 @@ def processar_nome_placa(raw_val: Any, line_num: int = 0) -> Tuple[str, str, str
         nome_limpo = re.sub(r'\b(pernoite|di[aá]ria\s+garantida|nf\s*-?\s*\d+|sr\s*-?\s*\d+|\d{5,})\b', '', nome_bruto, flags=re.IGNORECASE)
         nome_limpo = re.sub(r'(as|às)\s+(?=\d{1,2}:\d{2}|\d{1,2}h\d{2}|\d{1,2}h(?!\d)|h(?!\w))', '', nome_limpo, flags=re.IGNORECASE)
         nome_limpo = NOME_CLEANUP_REGEX.sub('', nome_limpo)
-        nome_limpo = nome_limpo.replace('-', '')
+        nome_limpo = nome_limpo.replace('-', '').replace('|', '')
         nome_limpo = re.sub(r'\s+', ' ', nome_limpo).strip()
 
         if nome_limpo and not (re.search(r'\d', nome_limpo) or '&#' in nome_limpo):
@@ -334,7 +334,12 @@ class ExcelProcessor:
         idx_cotacao = mapping.get("nro_cotacao", 1)
         idx_categoria = mapping.get("categoria_veiculo", 10)
         idx_cidade_uf = mapping.get("cidade_uf", 12)
-        idx_nome_placa = mapping.get("nome_placa", 22)
+        # Fallback semântico para motorista/placa: se não houver coluna própria, tenta observacao_interna
+        idx_nome_placa = mapping.get("nome_placa")
+        if idx_nome_placa is None and "observacao_interna" in mapping:
+            idx_nome_placa = mapping.get("observacao_interna")
+        if idx_nome_placa is None:
+            idx_nome_placa = 22
         idx_remetente = mapping.get("remetente", 11)
         idx_validade = mapping.get("validade", 6)
         idx_frete_pagar = mapping.get("frete_a_pagar", 16)
@@ -391,6 +396,8 @@ class ExcelProcessor:
             obs_interna_raw = str(get_col(idx_obs_interna) or "").strip() if idx_obs_interna is not None else ""
             if not obs_interna_raw and nome_placa_raw and ("\n" in nome_placa_raw or "nf" in nome_placa_raw.lower() or "pernoite" in nome_placa_raw.lower()):
                 obs_interna_raw = nome_placa_raw
+            elif not nome_placa_raw and obs_interna_raw:
+                nome_placa_raw = obs_interna_raw
 
             extracted_nf = extrair_numero_nf(obs_interna_raw) if obs_interna_raw else None
             extracted_nro_pedido = None

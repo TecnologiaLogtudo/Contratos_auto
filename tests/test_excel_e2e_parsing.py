@@ -110,3 +110,40 @@ def test_parse_real_xls_file_if_exists():
     assert first_item.placa
     assert first_item.status == ItemStatus.PENDENTE
 
+
+def test_parse_layout_novas_colunas_obs_interna():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        file_path = Path(tmpdir) / "teste_novas_colunas.xlsx"
+        wb = openpyxl.Workbook()
+        ws = wb.active
+
+        # Cabeçalho linha 1 (sem offset)
+        header_row = [
+            "Nro da cotação", "Validade", "Categoria veículo", "Remetente",
+            "Fim prestação", "Frete Valor", "Frete a pagar", "Frete Negociado",
+            "Observação Interna"
+        ]
+        ws.append(header_row)
+
+        # Dados linha 2
+        row_data = [
+            "1109367", "01/10/2026", "TRUCK - NILO", "02.012.862/0011-31 - TAM LINHAS AEREAS",
+            "Brasília/DF", 1353.0, 1100.0, 833.33,
+            "VALDENI RAIMUNDO | EXD-9D67 | 25/11/2026"
+        ]
+        ws.append(row_data)
+        wb.save(file_path)
+        wb.close()
+
+        processor = ExcelProcessor(file_path)
+        items = processor.load_and_parse()
+        assert len(items) == 1
+        item = items[0]
+        assert item.nro_cotacao == "1109367"
+        assert item.nome == "VALDENI RAIMUNDO"
+        assert item.placa == "EXD9D67"
+        assert item.cidade == "Brasília"
+        assert item.uf == "DF"
+        assert item.data_pagamento == "25/11/2026"
+        assert len(processor.validation_errors) == 0
+

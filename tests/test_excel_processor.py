@@ -45,6 +45,15 @@ def test_limpeza_nome_motorista():
     assert "nf" not in nome.lower()
 
 
+def test_limpeza_nome_com_pipes():
+    raw = "VALDENI RAIMUNDO | EXD-9D67 | 25/11/2026"
+    nome, placa, dt, extra = processar_nome_placa(raw)
+    assert placa == "EXD9D67"
+    assert nome == "VALDENI RAIMUNDO"
+    assert dt == "25/11/2026"
+    assert extra == "Não"
+
+
 def test_padronizar_cidades():
     assert padronizar_cidade("JOAO PESSOA") == "J. Pessoa"
     assert padronizar_cidade("João Pessoa") == "J. Pessoa"

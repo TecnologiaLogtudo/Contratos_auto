@@ -30,7 +30,7 @@ COLUMN_SYNONYMS = {
     "status": ["status", "situação", "situacao", "estado", "fase", "posição", "posicao"],
     "nro_cotacao": ["nro cotação", "nro cotacao", "nro da cotação", "nro da cotacao", "cotação", "cotacao", "ravex", "nro pedido"],
     "categoria_veiculo": ["categoria veículo", "categoria veiculo", "categoria", "tipo veículo", "tipo veiculo"],
-    "cidade_uf": ["cidade/uf", "cidade / uf", "cidade", "municipio", "origem/destino"],
+    "cidade_uf": ["cidade/uf", "cidade / uf", "cidade", "municipio", "origem/destino", "fim prestação", "fim prestacao", "destino"],
     "nome_placa": ["motorista/placa", "nome/placa", "motorista / placa", "nome / placa", "motorista", "placa"],
     "remetente": ["remetente", "cliente", "empresa", "cnpj remetente"],
     "validade": ["validade", "dt validade", "data validade", "data de validade"],
