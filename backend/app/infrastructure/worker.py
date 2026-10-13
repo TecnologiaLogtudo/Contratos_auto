@@ -249,21 +249,31 @@ class JobWorker:
 
 
 class WorkerManager:
-    """Gerenciador central de instâncias de workers."""
+    """Gerenciador central de instâncias de workers.
+
+    Permite múltiplos jobs simultâneos de usuários diferentes,
+    mas impede que o MESMO usuário tenha mais de um job ativo ao mesmo tempo.
+    """
 
     def __init__(self):
         self._workers: Dict[str, JobWorker] = {}
-        # RLock (reentrante): get_active_worker é chamado dentro de create_and_start_worker,
-        # que já segura o lock — Lock comum causava deadlock no endpoint /start.
+        # RLock (reentrante): get_active_worker_for_user é chamado dentro de
+        # create_and_start_worker, que já segura o lock.
         self._lock = threading.RLock()
 
-    def get_active_worker(self) -> Optional[JobWorker]:
-        """Retorna o worker atualmente em execução, se houver."""
+    def get_active_worker_for_user(self, usuario: str) -> Optional[JobWorker]:
+        """Retorna o worker ativo do usuário, se houver."""
+        usuario_lower = usuario.strip().lower()
         with self._lock:
             for w in self._workers.values():
-                if w.is_running():
+                if w.is_running() and w.usuario.strip().lower() == usuario_lower:
                     return w
             return None
+
+    def get_active_workers(self) -> list[JobWorker]:
+        """Retorna todos os workers atualmente em execução."""
+        with self._lock:
+            return [w for w in self._workers.values() if w.is_running()]
 
     def create_and_start_worker(
         self,
@@ -274,11 +284,18 @@ class WorkerManager:
         headless: Optional[bool] = None,
         throttle_seconds: float = 2.5,
     ) -> JobWorker:
-        """Cria e dispara um novo worker para o Job."""
+        """Cria e dispara um novo worker para o Job.
+
+        Permite múltiplos jobs paralelos de usuários distintos.
+        Se o mesmo usuário já tiver um job ativo, bloqueia até que finalize ou cancele.
+        """
         with self._lock:
-            active = self.get_active_worker()
+            active = self.get_active_worker_for_user(usuario)
             if active:
-                raise RuntimeError(f"Já existe um lote em execução ({active.job_id}). Aguarde a conclusão ou cancele-o.")
+                raise RuntimeError(
+                    f"O usuário '{usuario}' já possui um lote em execução ({active.job_id}). "
+                    f"Aguarde a conclusão ou cancele-o antes de iniciar outro."
+                )
 
             worker = JobWorker(
                 job_id=job_id,
