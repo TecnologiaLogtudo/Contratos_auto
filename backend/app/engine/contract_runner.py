@@ -20,8 +20,10 @@ from .pages.cotacoes_page import CotacoesPage
 from .pages.conhecimento_page import ConhecimentoPage
 from .pages.frete_page import FretePage
 from .pages.contrato_page import ContratoPage
+from .session_recovery import SessionRecoveryManager, RecoveryResult, RecoveryStage, RecoveryStatus
 
 URL_CONHECIMENTO_FORM = "https://logtudo.e-login.net/versoes/versao5.0/rotinas/formulario.php?rotina=trans_conhecimento&OP=O1&_qsf=1"
+
 
 
 class ContractRunner:
@@ -91,11 +93,16 @@ class ContractRunner:
         login_page.login(self.usuario, self.senha, URL_CONHECIMENTO_FORM)
         self._take_screenshot("login_sucesso")
 
+        self._sync_page_objects()
+        self.log("[F1] Login concluído com sucesso e sessão autenticada.", "SUCESSO")
+
+    def _sync_page_objects(self) -> None:
+        """Sincroniza todas as instâncias de Page Objects com a página ativa atual."""
         self.cotacoes_page = CotacoesPage(self.page, log_callback=self.log)
         self.conhecimento_page = ConhecimentoPage(self.page, log_callback=self.log)
         self.frete_page = FretePage(self.page, log_callback=self.log)
         self.contrato_page = ContratoPage(self.page, log_callback=self.log)
-        self.log("[F1] Login concluído com sucesso e sessão autenticada.", "SUCESSO")
+
 
     def process_single_item(self, item: ItemContrato) -> ItemResult:
         """Processa um único item/cotação pelas Fases 2 a 5 de forma isolada."""
@@ -192,10 +199,7 @@ class ContractRunner:
             self._take_screenshot("login_sucesso")
 
             # 4. Instancia Page Objects
-            cotacoes_page = CotacoesPage(self.page, log_callback=self.log)
-            conhecimento_page = ConhecimentoPage(self.page, log_callback=self.log)
-            frete_page = FretePage(self.page, log_callback=self.log)
-            contrato_page = ContratoPage(self.page, log_callback=self.log)
+            self._sync_page_objects()
 
             # 5. Processamento item a item
             total = len(pendentes)
@@ -215,7 +219,7 @@ class ContractRunner:
                 try:
                     # Preparação (se Lactalis Especial)
                     if isinstance(strategy, LactalisSpecialBaseStrategy):
-                        cotacoes_page.extrair_metadados_cotacao(item, delay_step=self.delay_etapas)
+                        self.cotacoes_page.extrair_metadados_cotacao(item, delay_step=self.delay_etapas)
                     else:
                         # Navega direto para o formulário de Conhecimento
                         if "/rotinas/formulario.php" not in self.page.url or "trans_conhecimento" not in self.page.url:
@@ -224,17 +228,17 @@ class ContractRunner:
 
                     self._check_pause()
                     # Fase 3 - Conhecimento
-                    conhecimento_page.preencher_fase3(item, strategy, delay_step=self.delay_etapas)
+                    self.conhecimento_page.preencher_fase3(item, strategy, delay_step=self.delay_etapas)
                     time.sleep(self.delay_fases)
 
                     self._check_pause()
                     # Fase 4 - Frete
-                    frete_page.preencher_fase4(item, strategy, delay_step=self.delay_etapas)
+                    self.frete_page.preencher_fase4(item, strategy, delay_step=self.delay_etapas)
                     time.sleep(self.delay_fases)
 
                     self._check_pause()
                     # Fase 5 - Contrato
-                    contrato_page.preencher_e_salvar_fase5(
+                    self.contrato_page.preencher_e_salvar_fase5(
                         item,
                         strategy,
                         delay_step=self.delay_etapas,
@@ -283,20 +287,31 @@ class ContractRunner:
                 break
             time.sleep(0.2)
 
-    def _reset_session(self) -> None:
+    def _reset_session(self, force_hard_reset: bool = False) -> None:
+        """
+        Recupera a integridade da sessão após erro.
+        Utiliza o SessionRecoveryManager (Padrão Matt Pocock) com estratégia graduada:
+          - Estágio 1 (Leve): Limpeza de popups e recarregamento da rota base.
+          - Estágio 2 (Última Instância): Reset completo via logout formal -> login.
+          - Estágio 3 (Contingência): Descarte de página corrompida e abertura de nova aba.
+        """
         if self.stop_event.is_set():
             return
-        self.log("[Session] Realizando reset e recarregamento da sessão...", "DEBUG")
-        try:
-            DialogGuard.dismiss_all_popups(self.page, self.log, "Reset")
-            self.page.goto(URL_CONHECIMENTO_FORM, wait_until="load", timeout=30000)
-            time.sleep(self.delay_fases)
-        except Exception:
-            try:
-                login_page = LoginPage(self.page, log_callback=self.log)
-                login_page.login(self.usuario, self.senha, URL_CONHECIMENTO_FORM)
-            except Exception as e_login:
-                self.log(f"[Session] Falha no relogin de reset: {e_login}", "AVISO")
+        recovery_mgr = SessionRecoveryManager(
+            usuario=self.usuario,
+            senha=self.senha,
+            url_form=URL_CONHECIMENTO_FORM,
+            log_callback=self.log,
+            delay=self.delay_fases,
+        )
+        result = recovery_mgr.recover(
+            page=self.page,
+            context=self.context,
+            force_hard_reset=force_hard_reset,
+        )
+        self.page = result.page
+        self._sync_page_objects()
+
 
     def _take_screenshot(self, name: str, cotacao: Optional[str] = None) -> None:
         try:

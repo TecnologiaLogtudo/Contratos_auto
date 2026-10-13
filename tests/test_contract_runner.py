@@ -83,3 +83,44 @@ def test_contract_runner_lifecycle_with_mocked_browser():
                             assert item1.status == ItemStatus.CONCLUIDO
                             assert item2.status == ItemStatus.ERRO
                             assert "Falha simulada no frete" in (item2.observacao_erro or "")
+
+
+def test_contract_runner_reset_session_delegates_to_recovery_manager():
+    runner = ContractRunner(
+        usuario="admin",
+        senha="123",
+        log_callback=lambda m, l="INFO": None,
+    )
+    mock_page = MagicMock()
+    mock_ctx = MagicMock()
+    runner.page = mock_page
+    runner.context = mock_ctx
+
+    new_page = MagicMock()
+    fake_recovery_result = MagicMock()
+    fake_recovery_result.page = new_page
+
+    with patch("backend.app.engine.contract_runner.SessionRecoveryManager") as MockRecoveryMgr:
+        instance = MockRecoveryMgr.return_value
+        instance.recover.return_value = fake_recovery_result
+
+        runner._reset_session(force_hard_reset=False)
+
+        MockRecoveryMgr.assert_called_once_with(
+            usuario="admin",
+            senha="123",
+            url_form="https://logtudo.e-login.net/versoes/versao5.0/rotinas/formulario.php?rotina=trans_conhecimento&OP=O1&_qsf=1",
+            log_callback=runner.log,
+            delay=runner.delay_fases,
+        )
+        instance.recover.assert_called_once_with(
+            page=mock_page,
+            context=mock_ctx,
+            force_hard_reset=False,
+        )
+        assert runner.page == new_page
+        assert runner.conhecimento_page is not None
+        assert runner.frete_page is not None
+        assert runner.contrato_page is not None
+        assert runner.cotacoes_page is not None
+

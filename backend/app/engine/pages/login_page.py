@@ -96,3 +96,35 @@ class LoginPage:
                 self.page.goto(url_destino, wait_until="domcontentloaded", timeout=30000)
             except Exception as e:
                 raise NavigationError(f"Falha ao carregar destino: {e}", url=url_destino, step="Fase 2 - Destino")
+
+    def logout(self) -> None:
+        """
+        Executa logout formal da sessão no ERP LogTudo.
+        Descarta popups pendentes, tenta clicar em Sair na interface e
+        garante limpeza defensiva dos cookies do contexto.
+        """
+        self.log("[F2] Executando logout formal da sessão...", "INFO")
+        DialogGuard.dismiss_all_popups(self.page, self.log, "Logout")
+
+        # 1. Tenta acionar o menu do usuário e clicar no botão 'Sair'
+        try:
+            user_menu = self.page.locator("button.dropbtn, .dropbtn, .user-menu, #menu-usuario").first
+            if user_menu.is_visible():
+                user_menu.hover(timeout=3000)
+
+            sair_locator = self.page.locator("a:has-text('Sair'), button:has-text('Sair'), text='Sair'").first
+            if sair_locator.is_visible():
+                sair_locator.click(timeout=3000)
+                self.page.wait_for_timeout(500)
+        except Exception as e:
+            self.log(f"[F2] Aviso ao interagir com menu de logout: {e}", "DEBUG")
+
+        # 2. Limpeza defensiva de cookies para assegurar término da sessão no cliente
+        try:
+            if self.page.context:
+                self.page.context.clear_cookies()
+        except Exception as e_cookies:
+            self.log(f"[F2] Aviso ao limpar cookies de sessão: {e_cookies}", "DEBUG")
+
+        self.log("[F2] Logout e limpeza de cookies concluídos.", "SUCESSO")
+

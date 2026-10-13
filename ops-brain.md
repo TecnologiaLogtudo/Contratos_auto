@@ -36,10 +36,16 @@ Memória compartilhada para coordenação de trabalho entre agentes e projetos. 
 - 2026-09-22: corrigida extração de CNPJ LATAM/Padrão para não juntar números soltos do texto do Remetente. Agora só aceita CNPJ no formato `00.000.000/0000-00` ou 14 dígitos consecutivos; caso contrário usa LogTudo `20511709000169`. Alterados `backend/app/engine/pages/frete_page.py`, `backend/app/companies/latam.py`, `tests/test_frete_page.py` e POP. Validação: `PYTHONPATH=.` com `pytest tests\test_frete_page.py tests\test_strategies.py` resultou em 6 testes aprovados.
 - 2026-09-30: analisados frontend e recursos periféricos; criado `templates/web-automation-interface`, template React/Vite reutilizável com modo mock, contrato REST/WebSocket, checklist, Docker/Nginx e inventário da referência. Validação: `npm run build` com Vite 6.4.3 (30 módulos) e `npm audit` sem vulnerabilidades.
 - 2026-10-08: corrigida identificação de Motorista, Placa e Cidade/UF para relatórios BSoft com layout sem coluna A inicial e dados em "Observação Interna" / "Fim prestação". Atualizado `sanitizer.py` (sinônimos de cidade_uf), `excel_processor.py` e `fase1_processamento.py` (fallback semântico para observação interna e limpeza de pipes). Validação: 45 testes aprovados no pytest (incluindo 2 novos testes) e 10/10 itens válidos na planilha reportada.
+- 2026-10-13: implementado o módulo resiliente `backend/app/engine/session_recovery.py` (`SessionRecoveryManager`) para recuperação e reparo determinístico de sessão pós-erro no padrão Matt Pocock. Adicionado `logout()` formal no `LoginPage` (`backend/app/engine/pages/login_page.py`), fechando popups, acionando menu 'Sair' e limpando cookies de forma defensiva. `ContractRunner._reset_session()` agora opera em estratégia graduada: tenta primeiro a recuperação leve (Soft Reload com health check de formulário); se insuficiente, aciona a última instância com Reset completo (logout formal -> novo login); em caso de colapso de página, executa contingência criando nova aba limpa. Validação: 55 testes aprovados no pytest (incluindo 9 novos testes em `test_session_recovery.py` e 1 novo em `test_contract_runner.py`).
+- 2026-10-13: atualizado `backend/requirements.txt` com `uvicorn[standard]==0.32.0` e `websockets>=12.0` para solucionar erro de `Unsupported upgrade request` / handshake de WebSocket rejeitado que deixava a interface em status "aguardando" no Coolify/servidor. Validação: 55 testes mantidos 100% verdes no pytest.
 
 ## Próximos passos
 - Usar este cérebro como referência para futuras tarefas.
 - Atualizar com decisões e resultados de cada ciclo de trabalho.
+- Realizar deploy no Coolify e verificar se a rota WebSocket `/ws/jobs/{job_id}` conecta imediatamente sem advertências.
+- Monitorar execuções reais com cotações com erro (como Perfil de Apropriação) para verificar a transição suave de recuperação entre os itens.
 - Se houver ajuste futuro para LATAM, confirmar qual fluxo está ativo no ambiente: page object novo (`engine/pages/frete_page.py`) ou fase legada (`phases/fase4_frete.py` + `companies/latam.py`).
 - Revisar o POP com a operação para ajustar nomes internos e exceções reais observadas em produção, se necessário.
 - Ao iniciar uma nova automação web, copiar `templates/web-automation-interface`, editar `src/template.config.js` e implementar `BACKEND_CONTRACT.md`.
+
+
