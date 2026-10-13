@@ -160,7 +160,7 @@ class ContractRunner:
             duration = time.time() - item_start
             self.log(f"[F5] FALHA na cotação {nro}: {err_msg}", "ERRO")
             self._take_screenshot(f"falha_cotacao_{nro}")
-            self._reset_session()
+            self._reset_session(error=err)
             return ItemResult(
                 nro_cotacao=nro,
                 status=ItemStatus.ERRO,
@@ -263,7 +263,7 @@ class ContractRunner:
                     self.processor.save_output(self.output_filepath)
 
                     # Reset de sessão seguro após erro para não contaminar a próxima cotação
-                    self._reset_session()
+                    self._reset_session(error=err)
 
                 time.sleep(self.delay_fases)
 
@@ -287,13 +287,13 @@ class ContractRunner:
                 break
             time.sleep(0.2)
 
-    def _reset_session(self, force_hard_reset: bool = False) -> None:
+    def _reset_session(self, error: Optional[Exception] = None, force_hard_reset: bool = False) -> None:
         """
         Recupera a integridade da sessão após erro.
         Utiliza o SessionRecoveryManager (Padrão Matt Pocock) com estratégia graduada:
-          - Estágio 1 (Leve): Limpeza de popups e recarregamento da rota base.
-          - Estágio 2 (Última Instância): Reset completo via logout formal -> login.
-          - Estágio 3 (Contingência): Descarte de página corrompida e abertura de nova aba.
+          - Se houver erro de cotação/dados ou force_hard_reset=True: Reset Completo (logout -> login).
+          - Sem erro: Recuperação leve (Soft Reload com health check).
+          - Contingência: Descarte de página corrompida e abertura de nova aba.
         """
         if self.stop_event.is_set():
             return
@@ -307,6 +307,7 @@ class ContractRunner:
         result = recovery_mgr.recover(
             page=self.page,
             context=self.context,
+            error=error,
             force_hard_reset=force_hard_reset,
         )
         self.page = result.page

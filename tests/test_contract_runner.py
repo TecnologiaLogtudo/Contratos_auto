@@ -116,6 +116,7 @@ def test_contract_runner_reset_session_delegates_to_recovery_manager():
         instance.recover.assert_called_once_with(
             page=mock_page,
             context=mock_ctx,
+            error=None,
             force_hard_reset=False,
         )
         assert runner.page == new_page
@@ -123,4 +124,31 @@ def test_contract_runner_reset_session_delegates_to_recovery_manager():
         assert runner.frete_page is not None
         assert runner.contrato_page is not None
         assert runner.cotacoes_page is not None
+
+
+def test_contract_runner_reset_session_passes_error_to_recovery():
+    runner = ContractRunner(
+        usuario="admin",
+        senha="123",
+        log_callback=lambda m, l="INFO": None,
+    )
+    mock_page = MagicMock()
+    mock_ctx = MagicMock()
+    runner.page = mock_page
+    runner.context = mock_ctx
+
+    simulated_err = RuntimeError("Erro simulado")
+    with patch("backend.app.engine.contract_runner.SessionRecoveryManager") as MockRecoveryMgr:
+        instance = MockRecoveryMgr.return_value
+        instance.recover.return_value = MagicMock(page=mock_page)
+
+        runner._reset_session(error=simulated_err)
+
+        instance.recover.assert_called_once_with(
+            page=mock_page,
+            context=mock_ctx,
+            error=simulated_err,
+            force_hard_reset=False,
+        )
+
 

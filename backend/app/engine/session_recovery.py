@@ -80,15 +80,30 @@ class SessionRecoveryManager:
 
         return HealthCheckResult(healthy=False, reason="Campo principal do formulário (dados_agencias_id) não visível.")
 
+    def _should_force_hard_reset(self, error: Optional[Exception], force_hard_reset: bool) -> tuple[bool, str]:
+        """
+        Determina se a recuperação deve executar obrigatoriamente o Reset Completo (logout -> login).
+        No ERP LogTudo (PHP/BSoft), dados parciais inseridos são mantidos na sessão do servidor.
+        Erros de valores não encontrados ou falhas de formulário NÃO são limpos por refresh.
+        """
+        if force_hard_reset:
+            return True, "Reset forçado por parâmetro explícito."
+        if error is not None:
+            return True, f"Falha de processamento/dados residuais ({error}). Logout obrigatório para expurgar sessão do ERP."
+        return False, "Nenhum erro de processamento informado; permitindo tentativa de recuperação leve."
+
     def recover(
         self,
         page: Optional[Page],
         context: Optional[BrowserContext] = None,
+        error: Optional[Exception] = None,
         force_hard_reset: bool = False,
     ) -> RecoveryResult:
         """
         Executa o pipeline graduado de recuperação.
-        O Reset (logout -> login) é a ÚLTIMA INSTÂNCIA executada se a recuperação leve não bastar.
+        Se houver erro de processamento/dados na cotação ou force_hard_reset=True,
+        executa diretamente o Reset Completo (logout -> login) para expurgar dados residuais do ERP.
+        Caso contrário, tenta primeiro a recuperação leve (soft reload).
         """
         self.log("[Recovery] Iniciando procedimento de recuperação de sessão...", "DEBUG")
 
@@ -96,8 +111,10 @@ class SessionRecoveryManager:
             self.log("[Recovery] Página nula ou fechada. Acionando criação de nova aba limpa...", "AVISO")
             return self._recover_fresh_page(context)
 
-        # 1. Estágio 1: Tentativa Leve (Soft Reload)
-        if not force_hard_reset:
+        should_hard_reset, reason = self._should_force_hard_reset(error, force_hard_reset)
+
+        # 1. Se não requer hard reset, tenta primeiro a Recuperação Leve (Soft Reload)
+        if not should_hard_reset:
             self.log("[Recovery] Estágio 1/2: Tentando recuperação leve (fechar modais e recarregar rota)...", "DEBUG")
             soft_health = self._execute_soft_reload(page)
             if soft_health.healthy:
@@ -109,6 +126,8 @@ class SessionRecoveryManager:
                     message=soft_health.reason,
                 )
             self.log(f"[Recovery] Recuperação leve insuficiente: {soft_health.reason}", "AVISO")
+        else:
+            self.log(f"[Recovery] {reason}", "AVISO")
 
         # 2. Estágio 2: ÚLTIMA INSTÂNCIA - Reset Completo (Logout -> Login)
         self.log("[Recovery] Estágio 2/2 (ÚLTIMA INSTÂNCIA): Executando Reset formal da sessão (logout -> login)...", "INFO")
@@ -125,6 +144,7 @@ class SessionRecoveryManager:
         # 3. Estágio 3: Contingência Extrema com Nova Aba Limpa
         self.log(f"[Recovery] Falha no reset na página ativa ({hard_health.reason}). Acionando contingência extrema...", "AVISO")
         return self._recover_fresh_page(context)
+
 
     def _execute_soft_reload(self, page: Page) -> HealthCheckResult:
         """Estágio 1: Descarta popups e recarrega a URL base."""

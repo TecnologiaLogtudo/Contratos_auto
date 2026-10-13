@@ -164,3 +164,23 @@ def test_login_page_logout():
     mock_menu.hover.assert_called_once()
     mock_sair.click.assert_called_once()
     mock_context.clear_cookies.assert_called_once()
+
+
+def test_recover_hard_reset_when_error_passed(recovery_manager):
+    from backend.app.domain.errors import FormFillError
+
+    mock_page = MagicMock()
+    mock_page.is_closed.return_value = False
+
+    err = FormFillError("Perfil de Apropriação não encontrado para 'Porto Seguro'.", field_name="dados_perfisApropriacao_id")
+
+    with patch.object(recovery_manager, "_execute_soft_reload") as mock_soft:
+        with patch.object(recovery_manager, "_execute_hard_reset", return_value=HealthCheckResult(True, "Login ok")) as mock_hard:
+            res = recovery_manager.recover(mock_page, error=err, force_hard_reset=False)
+
+    assert res.status == RecoveryStatus.SUCCESS
+    assert res.stage == RecoveryStage.STAGE_2_HARD_RESET
+    # Quando há erro de valor não encontrado / formulário, NÃO deve tentar soft reload
+    mock_soft.assert_not_called()
+    mock_hard.assert_called_once_with(mock_page)
+
