@@ -10,6 +10,7 @@ from playwright.sync_api import Browser, BrowserContext, Page, Playwright
 
 from ..domain.models import ItemContrato, ItemStatus, ItemResult, ExecutionSummary
 from ..domain.errors import AutomationError, AuthenticationError
+from ..infrastructure.observability import report_exception
 from .browser_factory import BrowserFactory, BrowserConfig
 from .excel_processor import ExcelProcessor
 from .dialog_guard import DialogGuard
@@ -156,6 +157,7 @@ class ContractRunner:
             )
 
         except Exception as err:
+            report_exception(err, component="contract_item")
             err_msg = str(err)
             duration = time.time() - item_start
             self.log(f"[F5] FALHA na cotação {nro}: {err_msg}", "ERRO")
@@ -255,6 +257,7 @@ class ContractRunner:
                     self.log(f"[Item {nro}] Concluído em {round(time.time() - item_start, 1)}s.", "SUCESSO")
 
                 except Exception as err:
+                    report_exception(err, component="contract_item")
                     summary.erros += 1
                     err_msg = str(err)
                     self.log(f"[Item {nro}] FALHA: {err_msg}", "ERRO")
@@ -271,6 +274,7 @@ class ContractRunner:
             self.log(f"Processamento concluído: {summary.sucessos} sucessos, {summary.erros} erros. Taxa: {summary.taxa_sucesso}%", "SUCESSO")
 
         except Exception as fatal_err:
+            report_exception(fatal_err, component="contract_runner")
             self.log(f"Erro fatal na execução: {fatal_err}", "ERRO")
             self.log(traceback.format_exc(), "DEBUG")
             self._take_screenshot("erro_fatal_execucao")

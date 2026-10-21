@@ -52,3 +52,11 @@ Memória compartilhada para coordenação de trabalho entre agentes e projetos. 
 
 
 
+
+
+## 2026-10-21 — Observabilidade: patch preparado (implantacao pendente)
+- Objetivo: integrar Contratos de frete ao GlitchTip em erros.logtudo.com.br.
+- Mudancas propostas: inicializacao opcional Sentry no FastAPI, captura de erros tratados no runner/worker, contexto job_id, sanitizacao por allowlist e variaveis no Compose. Sem SENTRY_DSN a coleta fica desativada; tracing Sentry desligado para fase futura OTel/Uptrace.
+- Validacoes na copia isolada: 9 testes novos passaram com SDK simulado. Suite completa encontrou bloqueios de permissoes em temporarios e Playwright; SDK real/envio ao GlitchTip ainda precisam ser validados.
+- Riscos/pendencias: aplicacao deste patch, instalacao da dependencia, teste real de HTTP/worker, DSN e release no Coolify, DNS/GlitchTip, Telegram e backlog. Mensagens brutas omitidas por privacidade; diagnostico utiliza tipo/pilha/job_id e registros locais.
+- Proximos passos: validar patch na revisao de destino, testar com SDK real, atualizar grafo Graphify apos aplicar, fazer commit/push e deploy somente apos revisao operacional.

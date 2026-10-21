@@ -15,6 +15,7 @@ from ..engine.excel_processor import ExcelProcessor
 from .artifacts import ArtifactManager, artifact_manager
 from .broadcaster import JobBroadcaster, broadcaster
 from .repository import JobRepository, job_repository
+from .observability import job_context, report_exception
 
 logger = logging.getLogger("contratos_auto.worker")
 
@@ -86,6 +87,14 @@ class JobWorker:
         self.broadcaster.log(self.job_id, "Cancelamento solicitado pelo usuário.", "AVISO")
 
     def _run(self) -> None:
+        with job_context(self.job_id):
+            try:
+                self._run_job()
+            except Exception as error:
+                report_exception(error, component="worker_unhandled")
+                raise
+
+    def _run_job(self) -> None:
         """Loop de trabalho principal da Thread."""
         start_time = time.time()
         if self.usuario:
@@ -236,6 +245,7 @@ class JobWorker:
                 self.broadcaster.log(self.job_id, f"Lote concluído com sucesso em {total_duration:.1f}s.", "SUCESSO")
 
         except Exception as e:
+            report_exception(e, component="worker")
             logger.exception(f"Erro fatal durante execução do worker: {e}")
             total_duration = time.time() - start_time
             self.repo.update_job_status(self.job_id, "FAILED", error_summary=str(e), duration_seconds=total_duration)

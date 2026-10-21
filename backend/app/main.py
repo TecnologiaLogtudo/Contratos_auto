@@ -20,6 +20,7 @@ from fastapi.staticfiles import StaticFiles
 from .api.routes import router as api_router
 from .infrastructure.broadcaster import broadcaster
 from .infrastructure.database import BASE_STORAGE_DIR, db
+from .infrastructure.observability import init_observability
 
 
 BASE_PATH = os.getenv('BASE_PATH', '').strip()
@@ -27,6 +28,7 @@ if BASE_PATH and not BASE_PATH.startswith('/'):
     BASE_PATH = f'/{BASE_PATH}'
 BASE_PATH = BASE_PATH.rstrip('/') if BASE_PATH != '/' else ''
 
+init_observability()
 app = FastAPI(title="LogTudo Contratos_auto API", version="2.0.0")
 
 app.add_middleware(
