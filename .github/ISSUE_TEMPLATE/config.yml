@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Consultar incidentes no GlitchTip
+    url: https://erros.logtudo.com.br
+    about: Verifique o incidente e as recorrências antes de abrir outra Issue.

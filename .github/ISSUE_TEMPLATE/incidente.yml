@@ -1,0 +1,68 @@
+name: Incidente de produção
+description: Registrar uma falha observada no GlitchTip ou na operação.
+title: '[Incidente] '
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Consulte se já existe uma Issue para este incidente antes de abrir outra.
+        Inclua somente evidências sanitizadas. Não cole DSN, cookies, tokens, senhas,
+        planilhas de clientes ou URL de webhook com autenticação.
+  - type: input
+    id: glitchtip_url
+    attributes:
+      label: Link do incidente no GlitchTip
+      placeholder: https://erros.logtudo.com.br/logtudo/issues/3
+    validations:
+      required: true
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Severidade
+      options:
+        - A classificar
+        - P0 - Operação crítica indisponível ou risco de integridade dos dados
+        - P1 - Fluxo principal bloqueado sem alternativa
+        - P2 - Falha parcial com alternativa operacional
+        - P3 - Impacto baixo ou melhoria preventiva
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Ambiente e release
+      placeholder: production / contratos-auto@SHA
+    validations:
+      required: true
+  - type: textarea
+    id: impact
+    attributes:
+      label: Impacto observado
+      description: O que deixou de funcionar, abrangência e se há alternativa. Se não souber, registre como não confirmado.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidências e reprodução
+      description: Tipo da exceção, pilha sanitizada, horário com fuso, job_id se disponível, comportamento esperado e observado. Não execute emissão real só para reproduzir.
+    validations:
+      required: true
+  - type: textarea
+    id: mitigation
+    attributes:
+      label: Contorno ou contenção
+      description: O que já foi feito e resultado; ou informe que ainda não foi investigado.
+    validations:
+      required: false
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Critério de resolução
+      value: |
+        - [ ] Causa identificada ou motivo operacional classificado.
+        - [ ] Correção ou contorno validado com teste seguro.
+        - [ ] Revisão implantada identificada, quando houver mudança de código.
+        - [ ] Fluxo afetado validado e recorrências verificadas em janela representativa.
+    validations:
+      required: true
