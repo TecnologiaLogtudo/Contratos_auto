@@ -16,6 +16,7 @@ from .artifacts import ArtifactManager, artifact_manager
 from .broadcaster import JobBroadcaster, broadcaster
 from .repository import JobRepository, job_repository
 from .observability import job_context, report_exception
+from .item_watchdog import watch_item
 
 logger = logging.getLogger("contratos_auto.worker")
 
@@ -195,7 +196,8 @@ class JobWorker:
                 )
 
                 # Executa a linha individualmente
-                result = runner.process_single_item(item)
+                with watch_item(self.job_id):
+                    result = runner.process_single_item(item)
                 item_duration = time.time() - item_start
 
                 # Persiste o resultado unitário imediatamente no SQLite

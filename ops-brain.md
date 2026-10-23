@@ -60,3 +60,11 @@ Memória compartilhada para coordenação de trabalho entre agentes e projetos. 
 - Validacoes na copia isolada: 9 testes novos passaram com SDK simulado. Suite completa encontrou bloqueios de permissoes em temporarios e Playwright; SDK real/envio ao GlitchTip ainda precisam ser validados.
 - Riscos/pendencias: aplicacao deste patch, instalacao da dependencia, teste real de HTTP/worker, DSN e release no Coolify, DNS/GlitchTip, Telegram e backlog. Mensagens brutas omitidas por privacidade; diagnostico utiliza tipo/pilha/job_id e registros locais.
 - Proximos passos: validar patch na revisao de destino, testar com SDK real, atualizar grafo Graphify apos aplicar, fazer commit/push e deploy somente apos revisao operacional.
+
+
+## 2026-10-23 — Aviso consultivo de duracao por cotacao (candidato)
+- Objetivo: detectar cotacao ativa longa sem heartbeat por horario; usuario informou maximo normal estimado90s e lotes exclusivamente manuais.
+- Mudancas: item_watchdog envolve apenas process_single_item do worker com Timer daemon; JOB_ITEM_WARNING_SECONDS padrao180, zero desativa. Emite ItemExecutionDelayed uma vez e ItemExecutionFinishedAfterDelay ao sair da chamada, sem cancelar/reemitir ou alterar resultado.
+- Validacoes na copia isolada: 25 testes direcionados passaram, incluindo SDK Sentry2.72 real com transporte em memoria, corrida de conclusao, cancelamento antes do item e falhas do observador/transporte. Nenhuma emissao real ou deploy executado pela sessao.
+- Riscos/pendencias: prazo e aviso de possivel atraso, nao prova de travamento. Final da chamada pode ser erro. Login, relatorio, fechamento e queda total do processo nao cobertos; monitor externo/reconciliacao de orfaos ficam futuros. Regras de alerta GlitchTip podem agrupar/suprimir sinais.
+- Proximos passos: aplicar/revisar patch, testar e publicar quando nao houver lote ativo; configurar180 e release, validar captura em operacao e ajustar conforme duracoes. Atualizar grafo Graphify apos aplicar ao projeto real. Backup continua adiado.
