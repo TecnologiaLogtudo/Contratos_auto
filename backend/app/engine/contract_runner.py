@@ -11,6 +11,7 @@ from playwright.sync_api import Browser, BrowserContext, Page, Playwright
 from ..domain.models import ItemContrato, ItemStatus, ItemResult, ExecutionSummary
 from ..domain.errors import AutomationError, AuthenticationError
 from ..infrastructure.observability import report_exception
+from ..infrastructure.tracing import trace_span, traced
 from .browser_factory import BrowserFactory, BrowserConfig
 from .excel_processor import ExcelProcessor
 from .dialog_guard import DialogGuard
@@ -83,6 +84,7 @@ class ContractRunner:
         self.frete_page: Optional[FretePage] = None
         self.contrato_page: Optional[ContratoPage] = None
 
+    @traced('contratos.login')
     def login(self) -> None:
         """Inicializa o navegador e realiza o login único compartilhado para o lote."""
         self.log("[F1] Inicializando navegador Playwright...", "INFO")
@@ -105,6 +107,7 @@ class ContractRunner:
         self.contrato_page = ContratoPage(self.page, log_callback=self.log)
 
 
+    @traced('contratos.cotacao', root=True, item_result=True)
     def process_single_item(self, item: ItemContrato) -> ItemResult:
         """Processa um único item/cotação pelas Fases 2 a 5 de forma isolada."""
         nro = item.nro_cotacao
@@ -118,32 +121,36 @@ class ContractRunner:
 
         try:
             # Fase 2: Extração de Metadados (se Lactalis Especial)
-            if isinstance(strategy, LactalisSpecialBaseStrategy) and self.cotacoes_page:
-                self.cotacoes_page.extrair_metadados_cotacao(item, delay_step=self.delay_etapas)
-            else:
-                if "/rotinas/formulario.php" not in self.page.url or "trans_conhecimento" not in self.page.url:
-                    self.page.goto(URL_CONHECIMENTO_FORM, wait_until="load", timeout=45000)
-                    time.sleep(self.delay_fases)
+            with trace_span('contratos.fase2.preparacao'):
+                if isinstance(strategy, LactalisSpecialBaseStrategy) and self.cotacoes_page:
+                    self.cotacoes_page.extrair_metadados_cotacao(item, delay_step=self.delay_etapas)
+                else:
+                    if "/rotinas/formulario.php" not in self.page.url or "trans_conhecimento" not in self.page.url:
+                        self.page.goto(URL_CONHECIMENTO_FORM, wait_until="load", timeout=45000)
+                        time.sleep(self.delay_fases)
 
             # Fase 3: Conhecimento
-            if self.conhecimento_page:
-                self.conhecimento_page.preencher_fase3(item, strategy, delay_step=self.delay_etapas)
-            time.sleep(self.delay_fases)
+            with trace_span('contratos.fase3.conhecimento'):
+                if self.conhecimento_page:
+                    self.conhecimento_page.preencher_fase3(item, strategy, delay_step=self.delay_etapas)
+                time.sleep(self.delay_fases)
 
             # Fase 4: Frete
-            if self.frete_page:
-                self.frete_page.preencher_fase4(item, strategy, delay_step=self.delay_etapas)
-            time.sleep(self.delay_fases)
+            with trace_span('contratos.fase4.frete'):
+                if self.frete_page:
+                    self.frete_page.preencher_fase4(item, strategy, delay_step=self.delay_etapas)
+                time.sleep(self.delay_fases)
 
             # Fase 5: Contrato
-            if self.contrato_page:
-                self.contrato_page.preencher_e_salvar_fase5(
-                    item,
-                    strategy,
-                    delay_step=self.delay_etapas,
-                    dados_km=self.dados_km,
-                    aceitar_frete_minimo_antt=self.aceitar_frete_minimo_antt,
-                )
+            with trace_span('contratos.fase5.contrato'):
+                if self.contrato_page:
+                    self.contrato_page.preencher_e_salvar_fase5(
+                        item,
+                        strategy,
+                        delay_step=self.delay_etapas,
+                        dados_km=self.dados_km,
+                        aceitar_frete_minimo_antt=self.aceitar_frete_minimo_antt,
+                    )
 
             self._take_screenshot(f"sucesso_contrato_cotacao_{nro}")
             duration = time.time() - item_start
@@ -171,6 +178,7 @@ class ContractRunner:
                 execution_time_seconds=duration,
             )
 
+    @traced('contratos.fechamento')
     def close(self) -> None:
         """Fecha o navegador e limpa instâncias."""
         self._close_browser()
@@ -291,6 +299,7 @@ class ContractRunner:
                 break
             time.sleep(0.2)
 
+    @traced('contratos.recuperacao_sessao')
     def _reset_session(self, error: Optional[Exception] = None, force_hard_reset: bool = False) -> None:
         """
         Recupera a integridade da sessão após erro.

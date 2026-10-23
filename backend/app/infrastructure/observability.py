@@ -5,6 +5,7 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 import logging
 import os
+import re
 
 logger = logging.getLogger(__name__)
 _sdk = None
@@ -18,6 +19,10 @@ def before_send(event, hint):
     ) if key in event}
     clean['tags'] = {key: value for key, value in event.get('tags', {}).items()
                      if key in ('service', 'component', 'job_id')}
+    for key, length in (('trace_id', 32), ('span_id', 16)):
+        value = event.get('tags', {}).get(key)
+        if isinstance(value, str) and re.fullmatch(r'[0-9a-f]{' + str(length) + '}', value):
+            clean['tags'][key] = value
     values = []
     for exception in event.get('exception', {}).get('values', []):
         value = {
@@ -78,6 +83,10 @@ def init_observability():
         return False
 
 
+def current_job_id():
+    return _job_id.get()
+
+
 @contextmanager
 def job_context(job_id):
     token = _job_id.set(job_id)
@@ -96,6 +105,9 @@ def report_exception(error, *, component):
             scope.set_tag('component', component)
             if _job_id.get():
                 scope.set_tag('job_id', _job_id.get())
+            from .tracing import current_trace_ids
+            for key, value in current_trace_ids().items():
+                scope.set_tag(key, value)
             return _sdk.capture_exception(error)
     except Exception:
         logger.warning('Falha ao reportar incidente; registros locais preservados.')

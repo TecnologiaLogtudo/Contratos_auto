@@ -21,6 +21,7 @@ from .api.routes import router as api_router
 from .infrastructure.broadcaster import broadcaster
 from .infrastructure.database import BASE_STORAGE_DIR, db
 from .infrastructure.observability import init_observability
+from .infrastructure.tracing import init_tracing, shutdown_tracing
 
 
 BASE_PATH = os.getenv('BASE_PATH', '').strip()
@@ -29,6 +30,7 @@ if BASE_PATH and not BASE_PATH.startswith('/'):
 BASE_PATH = BASE_PATH.rstrip('/') if BASE_PATH != '/' else ''
 
 init_observability()
+init_tracing()
 app = FastAPI(title="LogTudo Contratos_auto API", version="2.0.0")
 
 app.add_middleware(
@@ -48,6 +50,11 @@ async def on_startup():
         broadcaster.set_event_loop(asyncio.get_running_loop())
     except Exception:
         pass
+
+
+@app.on_event("shutdown")
+async def on_shutdown():
+    await asyncio.to_thread(shutdown_tracing)
 
 
 # Registra rotas REST e WebSockets da Nova Arquitetura
