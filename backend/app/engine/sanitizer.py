@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
+from datetime import date, datetime
 from pathlib import Path
 from typing import Any, List, Optional, Sequence, Tuple
 import openpyxl
@@ -111,20 +112,21 @@ def sanitize_bsoft_xls(filepath: Path | str) -> NormalizedSpreadsheet:
             for c in range(c0, c1):
                 merged_map[(r, c)] = (r0, r1, c0, c1)
 
-    def get_val(r: int, c: int) -> Any:
+    def get_val_and_type(r: int, c: int) -> Tuple[Any, int]:
         m = merged_map.get((r, c))
         if m is None:
-            return sheet.cell_value(r, c)
-        return sheet.cell_value(m[0], m[2])
+            return sheet.cell_value(r, c), sheet.cell_type(r, c)
+        return sheet.cell_value(m[0], m[2]), sheet.cell_type(m[0], m[2])
 
-    raw_headers = [get_val(header_row, c) for c in range(sheet.ncols)]
+    raw_headers = [get_val_and_type(header_row, c)[0] for c in range(sheet.ncols)]
     headers = [str(h).replace("\n", " ").strip() if h else f"col_{i}" for i, h in enumerate(raw_headers)]
 
     rows: List[List[Any]] = []
     footer_hit = False
 
     for r in range(header_row + 1, sheet.nrows):
-        cells = [get_val(r, c) for c in range(sheet.ncols)]
+        cell_data = [get_val_and_type(r, c) for c in range(sheet.ncols)]
+        cells = [item[0] for item in cell_data]
 
         # Ignora rodapé
         if not footer_hit and any(isinstance(v, str) and any(mk in v.lower() for mk in FOOTER_MARKERS) for v in cells):
@@ -143,12 +145,21 @@ def sanitize_bsoft_xls(filepath: Path | str) -> NormalizedSpreadsheet:
 
         clean_row = []
         for c in range(sheet.ncols):
-            v = cells[c]
+            v, c_type = cell_data[c]
             bs = merged_map.get((r, c))
             if bs is not None and (r, c) != (bs[0], bs[2]):
-                anchor = cells[bs[2]]
+                anchor = cell_data[bs[2]][0]
                 if v == anchor:
                     v = ""
+
+            # Converte datas nativas do Excel (.xls) para DD/MM/YYYY
+            if c_type == xlrd.XL_CELL_DATE:
+                try:
+                    date_tuple = xlrd.xldate_as_tuple(v, wb.datemode)
+                    v = f"{date_tuple[2]:02d}/{date_tuple[1]:02d}/{date_tuple[0]:04d}"
+                except Exception:
+                    pass
+
             if isinstance(v, str):
                 v = re.sub(r"\s+", " ", v.replace("\t", " ")).strip()
             clean_row.append(v)
@@ -193,7 +204,14 @@ def sanitize_bsoft_xlsx(filepath: Path | str) -> NormalizedSpreadsheet:
             if first_text and any(first_text.startswith(mk) for mk in TOTAL_MARKERS):
                 continue
 
-            clean_row = [str(c).strip() if isinstance(c, str) else c for c in row]
+            clean_row = []
+            for c in row:
+                if isinstance(c, (datetime, date)):
+                    clean_row.append(c.strftime("%d/%m/%Y"))
+                elif isinstance(c, str):
+                    clean_row.append(c.strip())
+                else:
+                    clean_row.append(c)
             rows.append(clean_row)
 
         col_map = map_columns(headers)

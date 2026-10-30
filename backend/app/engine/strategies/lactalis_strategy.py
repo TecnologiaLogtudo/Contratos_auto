@@ -55,7 +55,7 @@ class LactalisBaseStrategy(BaseStrategy):
         if not item.validade:
             return None
 
-        val_raw = item.validade.strip()
+        val_raw = str(item.validade).strip()
         try:
             val_date: Optional[datetime] = None
             match_pt = re.search(r'(\d{1,2})[-/](\d{1,2})[-/](\d{4})', val_raw)
@@ -65,6 +65,14 @@ class LactalisBaseStrategy(BaseStrategy):
                 val_date = datetime(int(match_pt.group(3)), int(match_pt.group(2)), int(match_pt.group(1)))
             elif match_en:
                 val_date = datetime(int(match_en.group(1)), int(match_en.group(2)), int(match_en.group(3)))
+            else:
+                try:
+                    val_num = float(val_raw)
+                    if 30000 <= val_num <= 60000:
+                        from datetime import timedelta
+                        val_date = datetime(1899, 12, 30) + timedelta(days=val_num)
+                except (ValueError, OverflowError):
+                    pass
             
             if not val_date:
                 return None

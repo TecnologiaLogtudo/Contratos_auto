@@ -122,7 +122,15 @@ class LactalisBaseCompany(BaseCompany):
                     elif match_en:
                         val_date = datetime(int(match_en.group(1)), int(match_en.group(2)), int(match_en.group(3)))
                     else:
-                        raise ValueError(f"Formato desconhecido: {validade_str}")
+                        try:
+                            val_num = float(validade_str)
+                            if 30000 <= val_num <= 60000:
+                                from datetime import timedelta
+                                val_date = datetime(1899, 12, 30) + timedelta(days=val_num)
+                            else:
+                                raise ValueError(f"Formato desconhecido: {validade_str}")
+                        except (ValueError, OverflowError):
+                            raise ValueError(f"Formato desconhecido: {validade_str}")
                         
                 novo_mes = val_date.month + 1
                 novo_ano = val_date.year
