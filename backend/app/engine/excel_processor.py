@@ -456,6 +456,87 @@ class ExcelProcessor:
             else:
                 self.items.append(item)
 
+    def populate_from_db(self, items_data: list[dict]) -> None:
+        """
+        Popula os itens e erros de validação a partir dos registros do banco de dados SQLite (job_items).
+        Garante consistência com o estado real persistido no Job.
+        """
+        with self._lock:
+            self.items.clear()
+            self.validation_errors.clear()
+
+            for r in items_data:
+                status_raw = str(r.get("status") or ItemStatus.PENDENTE.value).strip()
+                status_enum = ItemStatus.PENDENTE
+                if "conclu" in status_raw.lower():
+                    status_enum = ItemStatus.CONCLUIDO
+                elif "falha" in status_raw.lower() or "valida" in status_raw.lower():
+                    status_enum = ItemStatus.FALHA_VALIDACAO
+                elif "erro" in status_raw.lower():
+                    status_enum = ItemStatus.ERRO
+                else:
+                    try:
+                        status_enum = ItemStatus(status_raw)
+                    except ValueError:
+                        status_enum = ItemStatus.PENDENTE
+
+                item = ItemContrato(
+                    nro_cotacao=str(r.get("nro_cotacao") or "").strip(),
+                    categoria_veiculo=str(r.get("categoria_veiculo") or "").strip(),
+                    cidade=str(r.get("cidade") or "").strip(),
+                    uf=str(r.get("uf") or "").strip(),
+                    nome=str(r.get("nome") or "").strip(),
+                    placa=str(r.get("placa") or "").strip(),
+                    data_pagamento=str(r.get("data_pagamento") or "").strip(),
+                    viagem_extra=str(r.get("viagem_extra") or "Não").strip(),
+                    remetente=str(r.get("remetente") or "").strip(),
+                    validade=r.get("validade"),
+                    frete_a_pagar=r.get("frete_a_pagar"),
+                    frete_negociado=r.get("frete_negociado"),
+                    status=status_enum,
+                    observacao_erro=r.get("error_message"),
+                    extracted_nro_pedido=r.get("extracted_nro_pedido"),
+                    extracted_obs_interna=r.get("extracted_obs_interna"),
+                    extracted_nf=r.get("extracted_nf"),
+                    row_index=r.get("row_index"),
+                )
+
+                if status_enum == ItemStatus.FALHA_VALIDACAO:
+                    motivo = r.get("error_message") or "Falha na validação prévia"
+                    self.validation_errors.append((item, motivo))
+                else:
+                    self.items.append(item)
+
+    def sync_with_db(self, items_data: list[dict]) -> None:
+        """
+        Sincroniza status e mensagens de erro com os dados persistidos no banco de dados.
+        Se self.items estiver vazio, popula diretamente com populate_from_db.
+        """
+        with self._lock:
+            if not self.items and not self.validation_errors:
+                self.populate_from_db(items_data)
+                return
+
+            db_by_cotacao = {str(r.get("nro_cotacao", "")).strip(): r for r in items_data}
+            for item in self.items:
+                cotacao = str(item.nro_cotacao).strip()
+                if cotacao in db_by_cotacao:
+                    db_r = db_by_cotacao[cotacao]
+                    status_raw = str(db_r.get("status") or "").strip()
+                    if "conclu" in status_raw.lower():
+                        item.status = ItemStatus.CONCLUIDO
+                    elif "falha" in status_raw.lower() or "valida" in status_raw.lower():
+                        item.status = ItemStatus.FALHA_VALIDACAO
+                    elif "erro" in status_raw.lower():
+                        item.status = ItemStatus.ERRO
+                    else:
+                        try:
+                            item.status = ItemStatus(status_raw)
+                        except ValueError:
+                            pass
+                    if db_r.get("error_message"):
+                        item.observacao_erro = db_r.get("error_message")
+
     def mark_success(self, nro_cotacao: str) -> None:
         """Marca o item como concluído com sucesso."""
         with self._lock:

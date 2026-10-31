@@ -87,6 +87,20 @@ class JobWorker:
         self._cancel_requested.set()
         self.broadcaster.log(self.job_id, "Cancelamento solicitado pelo usuário.", "AVISO")
 
+    def _save_and_register_report(self, excel_proc: ExcelProcessor) -> Optional[Path]:
+        """Salva a planilha consolidada e a registra nos artefatos do Job."""
+        try:
+            db_items = self.repo.list_job_items(self.job_id)
+            excel_proc.sync_with_db(db_items)
+
+            out_excel = self.artifacts.get_job_dir(self.job_id) / f"{self.job_id}.xlsx"
+            excel_proc.save_output(out_excel)
+            self.artifacts.register_excel_report(self.job_id, out_excel)
+            return out_excel
+        except Exception as e:
+            logger.error(f"Erro ao gerar/salvar relatório consolidado do Job {self.job_id}: {e}")
+            return None
+
     def _run(self) -> None:
         with job_context(self.job_id):
             try:
@@ -110,6 +124,8 @@ class JobWorker:
 
         if not pending_items:
             self.broadcaster.log(self.job_id, "Nenhum item pendente encontrado para este Job.", "AVISO")
+            excel_proc = ExcelProcessor(self.excel_path)
+            self._save_and_register_report(excel_proc)
             self.repo.update_job_status(self.job_id, "COMPLETED", duration_seconds=time.time() - start_time)
             return
 
@@ -149,6 +165,13 @@ class JobWorker:
 
         # 3. Inicializa o processador de Excel e o runner de automação
         excel_proc = ExcelProcessor(self.excel_path, log_callback=log_cb)
+        if self.excel_path.exists():
+            try:
+                excel_proc.load_and_parse()
+            except Exception as e:
+                logger.warning(f"Aviso ao carregar planilha original {self.excel_path}: {e}")
+        db_items = self.repo.list_job_items(self.job_id)
+        excel_proc.sync_with_db(db_items)
         from ..engine.browser_factory import BrowserConfig
         browser_cfg = BrowserConfig(
             headless=self.headless,
@@ -237,18 +260,23 @@ class JobWorker:
                     time.sleep(self.throttle_seconds)
 
             # 4. Finalização e geração do relatório consolidado
-            if not self._cancel_requested.is_set():
-                out_excel = self.artifacts.get_job_dir(self.job_id) / f"{self.job_id}.xlsx"
-                excel_proc.save_output(out_excel)
-                self.artifacts.register_excel_report(self.job_id, out_excel)
+            self._save_and_register_report(excel_proc)
 
-                total_duration = time.time() - start_time
+            total_duration = time.time() - start_time
+            if self._cancel_requested.is_set():
+                self.repo.update_job_status(self.job_id, "CANCELLED", duration_seconds=total_duration)
+                self.broadcaster.log(self.job_id, f"Execução cancelada. Relatório consolidado gerado em {total_duration:.1f}s.", "AVISO")
+            else:
                 self.repo.update_job_status(self.job_id, "COMPLETED", duration_seconds=total_duration)
                 self.broadcaster.log(self.job_id, f"Lote concluído com sucesso em {total_duration:.1f}s.", "SUCESSO")
 
         except Exception as e:
             report_exception(e, component="worker")
             logger.exception(f"Erro fatal durante execução do worker: {e}")
+            try:
+                self._save_and_register_report(excel_proc)
+            except Exception as e_rep:
+                logger.warning(f"Não foi possível salvar relatório de contingência: {e_rep}")
             total_duration = time.time() - start_time
             self.repo.update_job_status(self.job_id, "FAILED", error_summary=str(e), duration_seconds=total_duration)
             self.broadcaster.log(self.job_id, f"Falha fatal no lote: {e}", "ERRO")

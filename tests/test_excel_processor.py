@@ -132,3 +132,143 @@ def test_excel_processor_save_output():
         assert any(r[0] == "1002" and "Cotação bloqueada" in r[7] for r in rows_err[1:])
 
         wb_check.close()
+
+
+def test_sanitize_bsoft_xlsx_date_cells():
+    import datetime
+    from backend.app.engine.sanitizer import sanitize_bsoft_xlsx
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        test_file = Path(tmpdir) / "teste_datas.xlsx"
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        # Cabeçalhos
+        ws.append(["Nro cotação", "Validade", "Categoria veículo", "Remetente", "Cidade/UF", "Nome/Placa"])
+        # Linha com datetime nativo
+        dt_val = datetime.date(2026, 10, 1)
+        ws.append(["1925000", dt_val, "BONGO", "LACTALIS REFRIGERADO", "Salvador/BA", "GUSTAVO PLU2I87"])
+        wb.save(test_file)
+        wb.close()
+
+        norm = sanitize_bsoft_xlsx(test_file)
+        assert len(norm.rows) == 1
+        validade_str = norm.rows[0][norm.column_mapping["validade"]]
+        assert validade_str == "01/10/2026"
+
+
+def test_populate_from_db_and_save_output():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        dummy_in = Path(tmpdir) / "input.xlsx"
+        wb = openpyxl.Workbook()
+        wb.save(dummy_in)
+        wb.close()
+
+        processor = ExcelProcessor(dummy_in)
+        items_data = [
+            {
+                "nro_cotacao": "2001",
+                "categoria_veiculo": "TOCO",
+                "cidade": "Salvador",
+                "uf": "BA",
+                "nome": "MOTORISTA SUCESSO",
+                "placa": "ABC1234",
+                "data_pagamento": "10/10/2026",
+                "viagem_extra": "Não",
+                "remetente": "Lactalis",
+                "validade": "01/10/2026",
+                "frete_a_pagar": "1500,00",
+                "frete_negociado": "1500,00",
+                "status": "Concluído",
+                "error_message": None,
+                "row_index": 2,
+            },
+            {
+                "nro_cotacao": "2002",
+                "categoria_veiculo": "TRUCK",
+                "cidade": "Feira de Santana",
+                "uf": "BA",
+                "nome": "MOTORISTA ERRO",
+                "placa": "XYZ5678",
+                "data_pagamento": "11/10/2026",
+                "viagem_extra": "Sim",
+                "remetente": "LATAM",
+                "validade": "02/10/2026",
+                "frete_a_pagar": "2000,00",
+                "frete_negociado": "2000,00",
+                "status": "Erro",
+                "error_message": "Cotação bloqueada no ERP",
+                "row_index": 3,
+            },
+            {
+                "nro_cotacao": "2003",
+                "categoria_veiculo": "CARRETA",
+                "cidade": "Vitória",
+                "uf": "ES",
+                "nome": "NOME NÃO ENCONTRADO",
+                "placa": "PLACA NÃO ENCONTRADA",
+                "data_pagamento": "DATA NÃO ENCONTRADA",
+                "viagem_extra": "Não",
+                "remetente": "LogTudo",
+                "validade": None,
+                "frete_a_pagar": None,
+                "frete_negociado": None,
+                "status": "Falha Validação",
+                "error_message": "Dados faltantes: Nome, Placa",
+                "row_index": 4,
+            },
+        ]
+
+        processor.populate_from_db(items_data)
+
+        assert len(processor.items) == 2
+        assert len(processor.validation_errors) == 1
+
+        out_path = Path(tmpdir) / "relatorio_final.xlsx"
+        saved = processor.save_output(out_path)
+        assert saved.exists()
+
+        wb_out = openpyxl.load_workbook(saved)
+        assert "Dados Processados" in wb_out.sheetnames
+        assert "Contrato não realizado" in wb_out.sheetnames
+
+        ws_proc = wb_out["Dados Processados"]
+        ws_err = wb_out["Contrato não realizado"]
+
+        proc_rows = list(ws_proc.iter_rows(values_only=True))
+        err_rows = list(ws_err.iter_rows(values_only=True))
+
+        # Aba Dados Processados: 1 cabeçalho + 1 item concluído
+        assert len(proc_rows) == 2
+        assert proc_rows[1][0] == "2001"
+        assert proc_rows[1][4] == "MOTORISTA SUCESSO"
+        assert proc_rows[1][12] == "Concluído"
+
+        # Aba Contrato não realizado: 1 cabeçalho + 2 itens (1 com erro de execução + 1 com falha de validação)
+        assert len(err_rows) == 3
+        cots_err = [r[0] for r in err_rows[1:]]
+        assert "2002" in cots_err
+        assert "2003" in cots_err
+
+        wb_out.close()
+
+
+def test_sync_with_db():
+    dummy_in = Path("dummy.xlsx")
+    processor = ExcelProcessor(dummy_in)
+    item = ItemContrato(
+        nro_cotacao="3001",
+        nome="MOTORISTA TESTE",
+        placa="BRA2E19",
+        status=ItemStatus.PENDENTE,
+    )
+    processor.items = [item]
+
+    db_data = [
+        {
+            "nro_cotacao": "3001",
+            "status": "Concluído",
+            "error_message": None,
+        }
+    ]
+    processor.sync_with_db(db_data)
+    assert processor.items[0].status == ItemStatus.CONCLUIDO

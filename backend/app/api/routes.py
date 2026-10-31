@@ -218,6 +218,22 @@ async def get_job_artifacts(job_id: str) -> Dict[str, Any]:
     return {"job_id": job_id, "artifacts": artifacts}
 
 
+def _is_empty_or_header_only_excel(path: Path) -> bool:
+    """Verifica se uma planilha Excel não possui linhas de dados (apenas cabeçalhos ou vazia)."""
+    try:
+        import openpyxl
+        wb = openpyxl.load_workbook(path, read_only=True)
+        total_data_rows = 0
+        for sname in wb.sheetnames:
+            ws = wb[sname]
+            if ws.max_row and ws.max_row > 1:
+                total_data_rows += (ws.max_row - 1)
+        wb.close()
+        return total_data_rows == 0
+    except Exception:
+        return False
+
+
 @router.get("/jobs/{job_id}/download/{artifact_id}")
 async def download_artifact(job_id: str, artifact_id: str):
     """Download seguro de arquivo gerado (Excel, Screenshot, etc.)."""
@@ -235,6 +251,25 @@ async def download_artifact(job_id: str, artifact_id: str):
         if candidate_excel.exists():
             file_path = candidate_excel
             file_name = f"{job_id}.xlsx"
+
+    # Se o arquivo não existir ou for uma planilha Excel vazia/apenas com cabeçalhos,
+    # regenera a planilha consolidada sob demanda a partir do SQLite (job_items)
+    is_excel_target = (file_path and file_path.suffix == ".xlsx") or (not file_path and artifact_id in (job_id, f"{job_id}.xlsx") or (art and art.get("artifact_type") == "EXCEL_RESULT"))
+    if is_excel_target and (not file_path or not file_path.exists() or _is_empty_or_header_only_excel(file_path)):
+        db_items = job_repository.list_job_items(job_id)
+        if db_items:
+            job_dir = artifact_manager.get_job_dir(job_id)
+            candidate_excel = job_dir / f"{job_id}.xlsx"
+            processor = ExcelProcessor(candidate_excel)
+            processor.populate_from_db(db_items)
+            processor.save_output(candidate_excel)
+            file_path = candidate_excel
+            file_name = f"{job_id}.xlsx"
+            if not art:
+                try:
+                    artifact_manager.register_excel_report(job_id, candidate_excel)
+                except Exception:
+                    pass
 
     if not file_path or not file_path.exists():
         raise HTTPException(status_code=404, detail="Arquivo ou relatório do lote não encontrado no storage.")

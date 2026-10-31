@@ -76,3 +76,28 @@ Memória compartilhada para coordenação de trabalho entre agentes e projetos. 
 - Validacoes na copia isolada:54 testes passaram,1 teste SDK OTel real pulado porque dependencias indisponiveis e acesso PyPI bloqueado nesta sessao; instalar requirements e passar esse teste antes do deploy. Inclui regressao runner, Sentry real em memoria e watchdog. Teste XLSX passou com harness de temporarios do workspace devido ACL Python3.14 no sandbox. Compose config --quiet passou. Nenhum contrato real, envio remoto ou deploy por esta sessao.
 - Riscos/pendencias: SDK/exportador real e ingestao Grafana ainda precisam validacao; plano atual tem avaliacao14dias e deve permanecer Free;50GB/mensais compartilhados, medir antes de expandir. Banda incluida VPS ainda nao confirmada. Contexto do Timer watchdog nao inclui trace_id; usar job_id. Head sampling<1 pode perder traces de erros; Sentry segue independente. Fila em memoria pode descartar spans e nao sobrevive a restart.
 - Proximos passos: aplicar/revisar patch na revisao correta, instalar requirements e passar testes sem skips de SDK, configurar segredo OTLP no Coolify sem compartilhar token, commit/push/deploy sem lote ativo, executar trace_smoke --send --with-error e conferir Grafana/GlitchTip/Telegram. Atualizar grafo do projeto real apos aplicar. Medir consumo e expandir por service.name/token/taxa proprios.
+
+
+## 2026-10-30 — Resiliência a formatos nativos de data do Excel (.xls e .xlsx)
+- Objetivo: solucionar falha na extração e cálculo da Data Programada (Fase 5 / Lactalis) quando o usuário altera ou formata datas como Data nativa no Excel (gerando números seriais como `46296.0` para `01/10/2026`).
+- Causa-raiz: `sanitizer.py` extraía valor bruto `46296.0` sem converter tipos `xlrd.XL_CELL_DATE`, e as estratégias Lactalis esperavam regex textual (`DD/MM/AAAA` ou `AAAA-MM-DD`), retornando `None` e travando a Fase 5 com `FormFillError: Data Programada não pode ser calculada`.
+- Mudanças realizadas:
+  1. `backend/app/engine/sanitizer.py`: em `sanitize_bsoft_xls`, identifica `xlrd.XL_CELL_DATE` e converte para `DD/MM/YYYY` via `xlrd.xldate_as_tuple()`. Em `sanitize_bsoft_xlsx`, converte instâncias nativas `date`/`datetime` para `DD/MM/YYYY`.
+  2. `backend/app/engine/strategies/lactalis_strategy.py` e `backend/app/companies/lactalis.py`: adicionado fallback defensivo em `get_data_programada()` para interpretar números seriais na faixa `30000 <= val <= 60000` via época Excel (`1899-12-30`).
+  3. `tests/test_strategies.py` e `tests/test_excel_processor.py`: novos testes para conversão de datas nativas do Excel e datas seriais.
+- Validação: 100 testes passaram 100% verdes no pytest (`.venv\Scripts\python -m pytest tests/`). Teste com o arquivo real `C:\Users\felipe\Downloads\relatorio NOVO.xls` confirmou leitura e cálculo perfeitos para todos os 10 itens (`validade=01/10/2026` e `dt_prog=05/11/2026`).
+- Riscos e pendências: nenhum risco colateral; alteração puramente aditiva e compatível com formatos texto e nativo. Pronto para execução no ambiente operacional.
+
+## 2026-10-30 — Correção da planilha resultado retornada vazia após automação
+- Objetivo: solucionar defeito em que a planilha consolidada para download após a execução do lote era gerada e entregue vazia (apenas linhas de cabeçalho).
+- Causa-raiz:
+  1. `JobWorker` inicializava `ExcelProcessor` sem carregar os dados originais (`load_and_parse()` não era chamado), deixando `self.items` vazio.
+  2. Chamadas subsequentes a `mark_success` e `mark_error` não encontravam itens, e `save_output` escrevia 0 linhas de dados nas abas "Dados Processados" e "Contrato não realizado".
+  3. Lotes cancelados ou interrompidos por falhas não geravam artefato consolidado.
+- Mudanças realizadas:
+  1. `backend/app/engine/excel_processor.py`: adicionados métodos `populate_from_db` e `sync_with_db` com normalização resiliente de status (`Concluído`, `Erro`, `Falha na Validação`), permitindo reconstruir e sincronizar 100% dos dados a partir do SQLite (`job_items`).
+  2. `backend/app/infrastructure/worker.py`: adicionado método `_save_and_register_report`, integrando sincronização direta do banco e persistência/registro de artefatos em todos os fluxos: conclusão normal, cancelamento parcial, inexistência de itens pendentes ou interrupção.
+  3. `backend/app/api/routes.py`: adicionada função de detecção `_is_empty_or_header_only_excel` e regeneração sob demanda no endpoint `download_artifact`. Caso o arquivo não exista no disco ou contenha apenas cabeçalhos (inclusive jobs executados no passado), o backend regenera a planilha consolidada automaticamente a partir do banco e entrega o arquivo completo.
+  4. `tests/test_excel_processor.py` e `tests/test_api_endpoints.py`: testes adicionados cobrindo `populate_from_db`, `sync_with_db`, e regeneração dinâmica no download.
+- Validação: 103 testes passaram 100% verdes no pytest (`.venv\Scripts\python -m pytest tests/`).
+- Riscos e pendências: nenhum risco colateral; compatibilidade total com execuções ativas e histórico anterior.

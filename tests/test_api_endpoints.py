@@ -10,6 +10,7 @@ import pytest
 from starlette.datastructures import UploadFile
 
 from backend.app.api.routes import (
+    download_artifact,
     get_job_artifacts,
     get_job_details,
     get_job_logs,
@@ -151,4 +152,55 @@ async def test_upload_with_already_completed_ctes():
     pending_items = job_repository.get_pending_items(response.job_id)
     assert len(pending_items) == 1
     assert pending_items[0].nro_cotacao == "1832002"
+
+
+@pytest.mark.anyio
+async def test_download_artifact_regenerates_when_empty():
+    """Valida que o download de um job com planilha vazia ou ausente regenera os dados a partir do SQLite."""
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    for r in range(1, 5):
+        ws.append([f"Cabecalho_{r}"])
+    header_row = [
+        "Status", "Nro Cotação", "", "", "", "", "Validade", "", "", "",
+        "Categoria Veículo", "Remetente", "Cidade / UF", "", "", "",
+        "Frete a Pagar", "", "Frete Negociado", "", "", "",
+        "Motorista / Placa"
+    ]
+    ws.append(header_row)
+    ws.append([
+        "Concluído", "990001", None, None, None, None, "15/08/2026", None, None, None,
+        "TOCO", "LACTALIS", "SALVADOR / BA", None, None, None,
+        "R$ 500,00", None, "R$ 600,00", None, None, None,
+        "JOAO SILVA ABC1D23 15/08/2026"
+    ])
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    wb.close()
+
+    upload_file_obj = UploadFile(
+        file=buf,
+        filename="planilha_download_teste.xlsx",
+        headers={"content-type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"},
+    )
+    up_resp = await upload_and_validate(file=upload_file_obj)
+    job_id = up_resp.job_id
+
+    # Faz o download via fallback pelo job_id
+    response = await download_artifact(job_id=job_id, artifact_id=f"{job_id}.xlsx")
+    assert response.status_code == 200
+    file_path = Path(response.path)
+    assert file_path.exists()
+
+    # Valida que a planilha gerada contém a linha de dados e não apenas cabeçalho
+    wb_res = openpyxl.load_workbook(file_path)
+    assert "Dados Processados" in wb_res.sheetnames
+    ws_proc = wb_res["Dados Processados"]
+    rows = list(ws_proc.iter_rows(values_only=True))
+    assert len(rows) >= 2  # Cabeçalho + ao menos 1 linha
+    assert rows[1][0] == "990001"
+    assert rows[1][4] == "JOAO SILVA"
+    wb_res.close()
+
 

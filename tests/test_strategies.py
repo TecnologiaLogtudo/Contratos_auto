@@ -60,6 +60,13 @@ def test_calculo_data_programada_lactalis():
     item5 = ItemContrato(nro_cotacao="5", validade="05/12/2026")
     assert st.get_data_programada(item5) == "05/01/2027"
 
+    # Data em formato serial do Excel (ex: 46296.0 = 01/10/2026 -> dia 05/11/2026)
+    item_serial = ItemContrato(nro_cotacao="6", validade="46296.0")
+    assert st.get_data_programada(item_serial) == "05/11/2026"
+
+    item_serial_int = ItemContrato(nro_cotacao="7", validade="46296")
+    assert st.get_data_programada(item_serial_int) == "05/11/2026"
+
 
 def test_extrair_numero_nf():
     assert extrair_numero_nf("pernoite 53640535 nf-115452") == "115452"
