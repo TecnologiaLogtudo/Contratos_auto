@@ -29,6 +29,32 @@ UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
 
 
 # =============================================================================
+# HELPERS DE SESSÃO — isolamento por UUID único do browser (X-Session-Token)
+# =============================================================================
+
+def _get_session_token(request: Request) -> Optional[str]:
+    """Extrai o UUID de sessão do browser do header X-Session-Token."""
+    raw = request.headers.get("x-session-token", "").strip()
+    return raw if raw else None
+
+
+def _assert_job_owner(job: dict, session_token: Optional[str]) -> None:
+    """Valida que o token de sessão do request é o mesmo que criou o job.
+
+    Sem token no header → sem restrição (backward compat para clientes legados).
+    Só bloqueia quando ambos os lados têm token e eles diferem.
+    """
+    if not session_token:
+        return
+    job_token = (job.get("session_token") or "").strip()
+    if job_token and job_token != session_token:
+        raise HTTPException(
+            status_code=403,
+            detail="Acesso negado: este job pertence a outra sessão de browser.",
+        )
+
+
+# =============================================================================
 # DTOs / Schemas Pydantic
 # =============================================================================
 
@@ -67,7 +93,7 @@ class ActionResponse(BaseModel):
 # =============================================================================
 
 @router.post("/jobs/upload-and-validate", response_model=PreValidationResponse)
-async def upload_and_validate(file: UploadFile = File(...)) -> PreValidationResponse:
+async def upload_and_validate(file: UploadFile = File(...), request: Request = None) -> PreValidationResponse:
     """
     Recebe a planilha Excel (.xlsx ou .xls), aplica pré-tratamento BSoft, validação de campos
     obrigatórios e formatos, e inicializa o registro do Job no SQLite.
@@ -88,6 +114,8 @@ async def upload_and_validate(file: UploadFile = File(...)) -> PreValidationResp
         processor = ExcelProcessor(dest_path)
         report = processor.validate_upload()
 
+        session_token = request.headers.get("x-session-token", "").strip() or None if request else None
+
         # Cria o Job no SQLite persistindo o estado inicial e itens
         job_repository.create_job(
             job_id=job_id,
@@ -95,6 +123,7 @@ async def upload_and_validate(file: UploadFile = File(...)) -> PreValidationResp
             total_items=report.total_rows,
             items=processor.items,
             invalid_items=processor.validation_errors,
+            session_token=session_token,
         )
 
         return PreValidationResponse(
@@ -156,8 +185,12 @@ async def start_job(job_id: str, req: StartJobRequest) -> ActionResponse:
 
 
 @router.post("/jobs/{job_id}/pause", response_model=ActionResponse)
-async def pause_job(job_id: str) -> ActionResponse:
+async def pause_job(job_id: str, request: Request) -> ActionResponse:
     """Pausa a execução do lote após a conclusão do item atual."""
+    job = job_repository.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job não encontrado.")
+    _assert_job_owner(job, _get_session_token(request))
     worker = worker_manager.get_worker(job_id)
     if not worker or not worker.is_running():
         raise HTTPException(status_code=400, detail="O Job não está em execução ativa.")
@@ -166,8 +199,12 @@ async def pause_job(job_id: str) -> ActionResponse:
 
 
 @router.post("/jobs/{job_id}/resume", response_model=ActionResponse)
-async def resume_job(job_id: str) -> ActionResponse:
+async def resume_job(job_id: str, request: Request) -> ActionResponse:
     """Retoma a execução de um Job pausado."""
+    job = job_repository.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job não encontrado.")
+    _assert_job_owner(job, _get_session_token(request))
     worker = worker_manager.get_worker(job_id)
     if not worker:
         raise HTTPException(status_code=400, detail="Instância de Worker não encontrada.")
@@ -176,8 +213,12 @@ async def resume_job(job_id: str) -> ActionResponse:
 
 
 @router.post("/jobs/{job_id}/cancel", response_model=ActionResponse)
-async def cancel_job(job_id: str) -> ActionResponse:
+async def cancel_job(job_id: str, request: Request) -> ActionResponse:
     """Cancela a execução do lote imediatamente."""
+    job = job_repository.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job não encontrado.")
+    _assert_job_owner(job, _get_session_token(request))
     worker = worker_manager.get_worker(job_id)
     if worker and worker.is_running():
         worker.cancel()
@@ -187,9 +228,10 @@ async def cancel_job(job_id: str) -> ActionResponse:
 
 
 @router.get("/jobs")
-async def list_jobs(limit: int = Query(50, ge=1, le=200), offset: int = Query(0, ge=0)) -> Dict[str, Any]:
-    """Retorna histórico paginado de todos os jobs."""
-    jobs = job_repository.list_jobs(limit=limit, offset=offset)
+async def list_jobs(request: Request = None, limit: int = Query(50, ge=1, le=200), offset: int = Query(0, ge=0)) -> Dict[str, Any]:
+    """Retorna histórico paginado de jobs, filtrado pelo token de sessão do browser se o header X-Session-Token estiver presente."""
+    session_token = _get_session_token(request) if request else None
+    jobs = job_repository.list_jobs(limit=limit, offset=offset, session_token=session_token)
     return {"jobs": jobs, "limit": limit, "offset": offset}
 
 

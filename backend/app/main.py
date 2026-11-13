@@ -31,7 +31,7 @@ BASE_PATH = BASE_PATH.rstrip('/') if BASE_PATH != '/' else ''
 
 init_observability()
 init_tracing()
-app = FastAPI(title="LogTudo Contratos_auto API", version="2.0.0")
+app = FastAPI(title="LogTudo Contratos_auto API", version="2.5.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -102,7 +102,7 @@ def _render_index_html() -> HTMLResponse:
 
 @app.get("/health")
 def health() -> dict:
-    return {"status": "ok", "app": "LogTudo Contratos_auto", "version": "2.0.0"}
+    return {"status": "ok", "app": "LogTudo Contratos_auto", "version": "2.5.0"}
 
 
 @app.get("/health/ready")

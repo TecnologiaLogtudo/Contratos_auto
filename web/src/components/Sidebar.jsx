@@ -42,7 +42,7 @@ export default function Sidebar({
           <span className="font-semibold text-sm text-ink">
             LogTudo <span className="text-accent">Contratos</span>
           </span>
-          <span className="text-[10px] font-mono text-ink-dim tracking-wider">AUTOMAÇÃO v2.0</span>
+          <span className="text-[10px] font-mono text-ink-dim tracking-wider">AUTOMAÇÃO v2.5</span>
         </div>
       </div>
 

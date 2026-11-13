@@ -14,11 +14,45 @@ const getApiBase = () => {
 
 export const API_BASE = getApiBase()
 
+// =============================================================================
+// Gerenciamento de sessão por usuário (sessionStorage — isolado por aba/janela)
+// =============================================================================
+
+export const session = {
+  /**
+   * Retorna o UUID único e permanente deste browser/computador.
+   * Gerado uma única vez e salvo em localStorage — sobrevive a reloads e novos tabs.
+   * Cada browser/perfil de browser em cada máquina tem um UUID distinto.
+   * Esta é a base do isolamento de sessão multi-usuário.
+   */
+  getBrowserId: () => {
+    let id = localStorage.getItem('logtudo_browser_id')
+    if (!id) {
+      id = crypto.randomUUID()
+      localStorage.setItem('logtudo_browser_id', id)
+    }
+    return id
+  },
+
+  /** Retorna o job_id associado a esta sessão (para recuperação pós-reload). */
+  getJobId: () => sessionStorage.getItem('logtudo_session_job_id') || '',
+
+  /** Associa um job_id à sessão atual. */
+  setJobId: (jobId) => {
+    if (jobId) sessionStorage.setItem('logtudo_session_job_id', jobId)
+  },
+
+  /** Remove a associação de job_id da sessão (após reset ou conclusão). */
+  clearJob: () => sessionStorage.removeItem('logtudo_session_job_id'),
+}
+
 async function request(endpoint, options = {}) {
   const url = `${API_BASE}${endpoint}`
   const response = await fetch(url, {
     ...options,
     headers: {
+      // UUID permanente do browser — enviado em toda requisição para isolamento de sessão
+      'X-Session-Token': session.getBrowserId(),
       ...options.headers,
     },
   })

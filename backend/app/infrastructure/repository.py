@@ -56,6 +56,7 @@ class JobRepository:
         invalid_items: Optional[List[Tuple[ItemContrato, str]]] = None,
         job_id: Optional[str] = None,
         username: Optional[str] = None,
+        session_token: Optional[str] = None,
     ) -> str:
         """Cria um novo Job com ID no padrão ddmmaa-xxxxx e insere todos os seus itens atomicamente."""
         jid = job_id or self.generate_next_job_id()
@@ -67,10 +68,10 @@ class JobRepository:
             # 1. Cria o Job
             cur.execute(
                 """
-                INSERT INTO jobs (id, filename, status, total_items, success_count, error_count, invalid_count, user_credentials_username)
-                VALUES (?, ?, 'PENDING', ?, ?, 0, ?, ?)
+                INSERT INTO jobs (id, filename, status, total_items, success_count, error_count, invalid_count, user_credentials_username, session_token)
+                VALUES (?, ?, 'PENDING', ?, ?, 0, ?, ?, ?)
                 """,
-                (jid, filename, total_items, initial_success, invalid_count, username),
+                (jid, filename, total_items, initial_success, invalid_count, username, session_token),
             )
 
             # 2. Insere os itens válidos
@@ -176,11 +177,17 @@ class JobRepository:
         row = cur.fetchone()
         return dict(row) if row else None
 
-    def list_jobs(self, limit: int = 50, offset: int = 0) -> List[dict]:
-        """Lista jobs ordenados por data decrescente."""
+    def list_jobs(self, limit: int = 50, offset: int = 0, session_token: Optional[str] = None) -> List[dict]:
+        """Lista jobs ordenados por data decrescente, filtrados pelo token de sessão do browser quando presente."""
         conn = self.db.get_connection()
         cur = conn.cursor()
-        cur.execute("SELECT * FROM jobs ORDER BY created_at DESC LIMIT ? OFFSET ?", (limit, offset))
+        if session_token:
+            cur.execute(
+                "SELECT * FROM jobs WHERE session_token = ? ORDER BY created_at DESC LIMIT ? OFFSET ?",
+                (session_token, limit, offset),
+            )
+        else:
+            cur.execute("SELECT * FROM jobs ORDER BY created_at DESC LIMIT ? OFFSET ?", (limit, offset))
         return [dict(r) for r in cur.fetchall()]
 
     # =========================================================================

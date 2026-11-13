@@ -86,6 +86,13 @@ class Database:
             except sqlite3.OperationalError:
                 pass  # Coluna já existe
 
+            # Token de sessão do browser — base do isolamento multi-usuário
+            try:
+                conn.execute("ALTER TABLE jobs ADD COLUMN session_token TEXT;")
+            except sqlite3.OperationalError:
+                pass  # Coluna já existe
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_session_token ON jobs(session_token);")
+
             # 2. Tabela de Itens
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS job_items (

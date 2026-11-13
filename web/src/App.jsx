@@ -6,7 +6,7 @@ import TabEmissao from './components/TabEmissao'
 import TabHistorico from './components/TabHistorico'
 import Toast from './components/Toast'
 import { ThemeProvider } from './context/ThemeContext'
-import { api } from './services/api'
+import { api, session } from './services/api'
 import { JobSocket } from './services/websocket'
 
 export default function App() {
@@ -58,6 +58,9 @@ export default function App() {
   useEffect(() => {
     const initApp = async () => {
       try {
+        // O UUID do browser é gerado automaticamente em session.getBrowserId()
+        // e enviado via header X-Session-Token em todas as requisições.
+        // Não é necessário nenhuma configuração manual de identidade aqui.
         await loadJobs()
         const cfg = await api.getConfig()
         if (cfg && Object.keys(cfg).length > 0) {
@@ -83,9 +86,14 @@ export default function App() {
     }
   }
 
-  // Detecta job em execução no startup (recuperação de sessão)
+  // Detecta job em execução no startup — apenas recupera o job desta sessão (isolamento multi-usuário)
   useEffect(() => {
-    const running = jobs.find((j) => j.status === 'RUNNING' || j.status === 'PAUSED')
+    const myJobId = session.getJobId()
+    const running = jobs.find(
+      (j) =>
+        (j.status === 'RUNNING' || j.status === 'PAUSED') &&
+        (!myJobId || j.id === myJobId),
+    )
     if (running && !currentJob) {
       setCurrentJob(running)
     }
@@ -172,6 +180,7 @@ export default function App() {
   const handleUploadAndValidate = async (file) => {
     try {
       const report = await api.uploadAndValidate(file)
+      session.setJobId(report.job_id)
       setPreValidationReport(report)
       setCurrentJob({ id: report.job_id, total_items: report.total_rows, success_count: 0, error_count: 0 })
       setLogs([])
@@ -239,6 +248,7 @@ export default function App() {
   }
 
   const handleResetPreValidation = () => {
+    session.clearJob()
     setPreValidationReport(null)
     setCurrentJob(null)
     setJobItems([])
