@@ -107,8 +107,9 @@ export const api = {
     return request(`/api/v2/jobs/${jobId}`)
   },
 
-  listJobs: async (limit = 50, offset = 0) => {
-    return request(`/api/v2/jobs?limit=${limit}&offset=${offset}`)
+  listJobs: async (limit = 50, offset = 0, mySessionOnly = false) => {
+    const q = mySessionOnly ? `&my_session_only=true` : ''
+    return request(`/api/v2/jobs?limit=${limit}&offset=${offset}${q}`)
   },
 
   getJobLogs: async (jobId, level = null) => {

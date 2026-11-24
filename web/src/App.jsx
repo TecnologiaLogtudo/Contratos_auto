@@ -89,10 +89,11 @@ export default function App() {
   // Detecta job em execução no startup — apenas recupera o job desta sessão (isolamento multi-usuário)
   useEffect(() => {
     const myJobId = session.getJobId()
+    const browserId = session.getBrowserId()
     const running = jobs.find(
       (j) =>
         (j.status === 'RUNNING' || j.status === 'PAUSED') &&
-        (!myJobId || j.id === myJobId),
+        ((myJobId && j.id === myJobId) || (j.session_token && j.session_token === browserId)),
     )
     if (running && !currentJob) {
       setCurrentJob(running)

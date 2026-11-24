@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react'
-import { api } from '../services/api'
+import { api, session } from '../services/api'
 
 export default function TabHistorico({
   jobs = [],
@@ -10,8 +10,10 @@ export default function TabHistorico({
 }) {
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('TODOS')
+  const [scopeFilter, setScopeFilter] = useState('TODOS')
 
   const filtered = useMemo(() => {
+    const myBrowserId = session.getBrowserId()
     return jobs.filter((j) => {
       const q = search.toLowerCase()
       const matchSearch =
@@ -20,9 +22,11 @@ export default function TabHistorico({
         (j.id || '').toLowerCase().includes(q) ||
         (j.user_credentials_username || '').toLowerCase().includes(q)
       const matchStatus = statusFilter === 'TODOS' || j.status === statusFilter
-      return matchSearch && matchStatus
+      const matchScope =
+        scopeFilter === 'TODOS' || (j.session_token && j.session_token === myBrowserId)
+      return matchSearch && matchStatus && matchScope
     })
-  }, [jobs, search, statusFilter])
+  }, [jobs, search, statusFilter, scopeFilter])
 
   useEffect(() => {
     if (selectedJobDetail) {
@@ -57,6 +61,14 @@ export default function TabHistorico({
             <option value="FAILED">Falhos</option>
             <option value="CANCELLED">Cancelados</option>
             <option value="RUNNING">Executando</option>
+          </select>
+          <select
+            value={scopeFilter}
+            onChange={(e) => setScopeFilter(e.target.value)}
+            className="input-field w-40 font-mono text-xs"
+          >
+            <option value="TODOS">Todos os Operadores</option>
+            <option value="MEUS">Apenas Meus Lotes</option>
           </select>
         </div>
       </div>

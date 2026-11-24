@@ -65,10 +65,13 @@ async def test_upload_and_validate_endpoint():
     assert response.valid_rows_count >= 1
     assert response.total_rows >= 1
 
-    # Testa listagem
+    # Testa listagem global (padrão) e filtrada
     jobs_res = await list_jobs(limit=10, offset=0)
     assert "jobs" in jobs_res
     assert any(j["id"] == response.job_id for j in jobs_res["jobs"])
+
+    jobs_res_session = await list_jobs(limit=10, offset=0, my_session_only=True)
+    assert "jobs" in jobs_res_session
 
     # Testa detalhes
     details_res = await get_job_details(response.job_id)

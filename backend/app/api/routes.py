@@ -228,9 +228,14 @@ async def cancel_job(job_id: str, request: Request) -> ActionResponse:
 
 
 @router.get("/jobs")
-async def list_jobs(request: Request = None, limit: int = Query(50, ge=1, le=200), offset: int = Query(0, ge=0)) -> Dict[str, Any]:
-    """Retorna histórico paginado de jobs, filtrado pelo token de sessão do browser se o header X-Session-Token estiver presente."""
-    session_token = _get_session_token(request) if request else None
+async def list_jobs(
+    request: Request = None,
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+    my_session_only: bool = Query(False, description="Se True, filtra apenas os jobs criados por esta sessão de browser."),
+) -> Dict[str, Any]:
+    """Retorna histórico paginado de jobs. Por padrão (my_session_only=False), lista o histórico global de jobs para visualização e métricas do Admin."""
+    session_token = _get_session_token(request) if (request and my_session_only) else None
     jobs = job_repository.list_jobs(limit=limit, offset=offset, session_token=session_token)
     return {"jobs": jobs, "limit": limit, "offset": offset}
 

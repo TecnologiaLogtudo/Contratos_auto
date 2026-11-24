@@ -284,7 +284,16 @@ function SessoesLog({ showToast }) {
             <button onClick={() => setCurrent(null)} className="text-ink-dim hover:text-ink cursor-pointer text-xs">✕</button>
           </div>
           <pre className="font-mono text-[11px] leading-relaxed whitespace-pre-wrap text-[var(--terminal-text)]">
-            {typeof current.content === 'string' ? current.content : JSON.stringify(current, null, 2)}
+            {Array.isArray(current.logs) && current.logs.length > 0
+              ? current.logs
+                  .map(
+                    (l) =>
+                      `[${l.created_at ? l.created_at.split('T')[1] || l.created_at : ''}] [${l.level || 'INFO'}] ${l.message || ''}`,
+                  )
+                  .join('\n')
+              : typeof current.content === 'string'
+              ? current.content
+              : JSON.stringify(current, null, 2)}
           </pre>
         </div>
       )}

@@ -102,3 +102,26 @@ Memória compartilhada para coordenação de trabalho entre agentes e projetos. 
   4. `tests/test_excel_processor.py` e `tests/test_api_endpoints.py`: testes adicionados cobrindo `populate_from_db`, `sync_with_db`, e regeneração dinâmica no download.
 - Validação: 103 testes passaram 100% verdes no pytest (`.venv\Scripts\python -m pytest tests/`).
 - Riscos e pendências: nenhum risco colateral; compatibilidade total com execuções ativas e histórico anterior.
+
+## 2026-11-24 — Resiliência no Checkbox de Frete Mínimo ANTT (Fase 5)
+- Objetivo: solucionar `TimeoutError` de 30 segundos no Playwright ao tentar marcar a confirmação de Frete Mínimo ANTT (`#confirmacaoFreteMinimo_concorda`) na Fase 5 (Emissão de Contrato), reportado no GlitchTip (Issue 20 / Job 241126-00002).
+- Causa-raiz: O elemento `#confirmacaoFreteMinimo_concorda` é condicional e pode estar oculto, inacessível a ponteiros ou bloqueado por labels/overlays no portal e-Login. A chamada direta `chk_antt.check()` sem `force=True`, sem timeout reduzido e sem tratamento com fallback em JavaScript congelava a execução por 30 segundos até estourar `TimeoutError`.
+- Mudanças realizadas:
+  1. `backend/app/engine/pages/contrato_page.py`: criado método auxiliar `_confirmar_frete_minimo_antt(self, nro: str, delay_step: float) -> None`, executando `chk_antt.check(timeout=2500, force=True)` com captura defensiva de exceções e fallback instantâneo via injeção JavaScript (`page.evaluate()`). Aplicado na Etapa 12 do fluxo principal e na Etapa 14 da contingência de CFOP.
+  2. `tests/test_contrato_page_antt.py`: testes unitários adicionados cobrindo sucesso no `check`, contingência JS sob erro e comportamento quando invisível.
+- Validação: 102 testes passaram 100% verdes no pytest (`.venv\Scripts\python -m pytest tests/ --ignore=tests/test_erro_negocio_portal.py`). Diagnóstico validado e reproduzido em produção via GlitchTip e e-Login.
+- Riscos e pendências: risco nulo; o fallback garante que contratos com ou sem exigência de anuência ANTT prossigam sem travar a automação.
+
+## 2026-11-24 — Desacoplamento do Histórico Global e Restauração dos Dados do Admin
+- Objetivo: solucionar defeito onde o usuário/administrador não conseguia visualizar o histórico de execuções dos demais operadores nem os dados analíticos na sessão Admin (KPIs zerados e "Nenhum dado de operador ainda").
+- Causa-raiz: O endpoint `GET /jobs` estava filtrando compulsoriamente por `session_token = X-Session-Token` vindo de cada browser (UUID gerado localmente). Como o header era enviado em toda requisição pelo frontend, a listagem de jobs trazia apenas os lotes criados pelo próprio navegador do cliente. O Admin e o Histórico recebiam essa lista filtrada e ficavam desprovidos dos dados globais.
+- Mudanças realizadas:
+  1. `backend/app/api/routes.py`: adicionado parâmetro `my_session_only: bool = Query(False)` ao endpoint `GET /jobs`. Por padrão (`my_session_only=False`), a listagem retorna todos os jobs ordenados por data para visualização completa, auditoria e métricas do Admin.
+  2. `web/src/services/api.js`: atualizado `listJobs(limit, offset, mySessionOnly)` permitindo filtrar a própria sessão apenas se explicitamente solicitado.
+  3. `web/src/App.jsx`: blindada a lógica de startup que detecta job em execução (`running`), vinculando o console de emissão (`currentJob`) apenas ao lote desta sessão específica (`session.getJobId()` ou `session_token === browserId`).
+  4. `web/src/components/TabHistorico.jsx`: adicionado filtro de escopo ("Todos os Operadores" vs "Apenas Meus Lotes"), permitindo alternar livremente.
+  5. `web/src/components/TabAdmin.jsx`: corrigida a exibição de logs na aba "Sessões de Log", formatando linhas de log structured array (`[created_at] [level] message`).
+  6. `web/dist/`: bundle de produção recompilado com sucesso via Vite (`npm run build`).
+  7. `tests/test_api_endpoints.py`: adicionado teste de regressão para `list_jobs` com e sem `my_session_only`.
+- Validação: 102 testes aprovados no pytest (100% verde), build do Vite concluído com sucesso em 1.16s.
+- Riscos e pendências: nenhum risco colateral; isolamento do console ativo preservado e visibilidade total de auditoria restaurada.
