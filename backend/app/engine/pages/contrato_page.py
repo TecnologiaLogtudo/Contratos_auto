@@ -120,11 +120,7 @@ class ContratoPage:
 
         # 12. Confirmação Frete Mínimo ANTT
         if aceitar_frete_minimo_antt:
-            chk_antt = self.page.locator('#confirmacaoFreteMinimo_concorda')
-            if chk_antt.is_visible(timeout=1500):
-                self.log(f"[F5] [Item {nro}] Aceitando aviso de Frete Mínimo ANTT...", "DEBUG")
-                chk_antt.check()
-                time.sleep(delay_step)
+            self._confirmar_frete_minimo_antt(nro, delay_step)
 
         # 13. Confirmação NCM
         try:
@@ -244,6 +240,28 @@ class ContratoPage:
         except Exception as e:
             self.log(f"[F5] [Item {nro}] Aviso ao vincular Destinatário Contrato: {e}", "DEBUG")
 
+    def _confirmar_frete_minimo_antt(self, nro: str, delay_step: float) -> None:
+        """Marca o checkbox de aceite de frete mínimo ANTT de forma resiliente."""
+        try:
+            chk_antt = self.page.locator('#confirmacaoFreteMinimo_concorda')
+            if chk_antt.is_visible(timeout=1500):
+                self.log(f"[F5] [Item {nro}] Aceitando aviso de Frete Mínimo ANTT...", "DEBUG")
+                chk_antt.check(timeout=2500, force=True)
+                time.sleep(delay_step)
+        except Exception as e_antt:
+            self.log(f"[F5] [Item {nro}] Tentando contingência JS para Frete Mínimo ANTT: {e_antt}", "DEBUG")
+            try:
+                self.page.evaluate("""() => {
+                    const el = document.querySelector('#confirmacaoFreteMinimo_concorda');
+                    if (el && !el.checked) {
+                        el.checked = true;
+                        el.dispatchEvent(new Event('change', { bubbles: true }));
+                    }
+                }""")
+                time.sleep(delay_step)
+            except Exception:
+                pass
+
     def _salvar_e_validar_conclusao(self, item: ItemContrato, delay_step: float) -> None:
         nro = item.nro_cotacao
         btn_save = self.page.locator('#botao_cadastrar, button:has-text("Salvar")').first
@@ -284,9 +302,7 @@ class ContratoPage:
                 time.sleep(delay_step)
 
                 # Re-confirma checkboxes
-                chk_antt = self.page.locator('#confirmacaoFreteMinimo_concorda')
-                if chk_antt.is_visible(timeout=1000):
-                    chk_antt.check()
+                self._confirmar_frete_minimo_antt(nro, delay_step)
 
                 self.page.locator('input[name="dados_confirmacaoNCMGeral_concorda"]').check()
                 time.sleep(delay_step)
