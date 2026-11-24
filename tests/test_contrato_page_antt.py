@@ -42,3 +42,34 @@ def test_confirmar_frete_minimo_antt_quando_invisivel():
 
     mock_locator.check.assert_not_called()
     mock_page.evaluate.assert_not_called()
+
+
+def test_configurar_destinatario_contrato_com_popup_interceptor():
+    mock_page = MagicMock()
+    mock_btn = MagicMock()
+    # Primeiro click falha (interceptado por popup), segundo click (force) funciona
+    mock_btn.click.side_effect = [Exception("intercepted by ui-widget-overlay"), None]
+
+    mock_dest_sel = MagicMock()
+    mock_dest_sel.select_option.return_value = None
+
+    def locator_side_effect(sel):
+        if "botaoPesquisa" in sel:
+            return mock_btn
+        if "dados_enderecoDestinatarioContrato_id" in sel:
+            return mock_dest_sel
+        return MagicMock()
+
+    mock_page.locator.side_effect = locator_side_effect
+
+    from backend.app.domain.models import ItemContrato
+    item = MagicMock(spec=ItemContrato)
+    item.nro_cotacao = "1361611"
+
+    page_obj = ContratoPage(mock_page)
+    page_obj._configurar_destinatario_contrato(item, delay_step=0.0)
+
+    # Verificou que tentou clicar duas vezes (primeira normal, segunda com force=True)
+    assert mock_btn.click.call_count == 2
+    mock_dest_sel.select_option.assert_called_once()
+

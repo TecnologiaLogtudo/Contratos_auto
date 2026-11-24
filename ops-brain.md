@@ -125,3 +125,13 @@ Memória compartilhada para coordenação de trabalho entre agentes e projetos. 
   7. `tests/test_api_endpoints.py`: adicionado teste de regressão para `list_jobs` com e sem `my_session_only`.
 - Validação: 102 testes aprovados no pytest (100% verde), build do Vite concluído com sucesso em 1.16s.
 - Riscos e pendências: nenhum risco colateral; isolamento do console ativo preservado e visibilidade total de auditoria restaurada.
+
+## 2026-11-24 — Fechamento Ativo de Pop-up de KM e Resiliência no Destinatário do Contrato
+- Objetivo: eliminar atraso/congelamento de 45 segundos e falha na seleção do Destinatário Contrato (`Logtudo`) causada pelo popup jQuery UI assíncrono `dialogo_distancia_km` e respectivo `ui-widget-overlay`.
+- Causa-raiz: O cálculo de distância e KM dispara um modal jQuery UI `dialogo_distancia_km` com overlay escuro no portal e-Login. A busca do destinatário tentava clicar em `botaoPesquisa_dados_enderecoDestinatarioContrato_id` sem `dismiss_all_popups` prévio e com timeout padrão longo de 45s, sendo fisicamente interceptado pelo overlay.
+- Mudanças realizadas:
+  1. `backend/app/engine/dialog_guard.py`: expandidos seletores de fechamento do `DialogGuard` para detectar e fechar especificamente diálogos com `aria-describedby="dialogo_distancia_km"`, botões "Sim", "Confirmar", "Continuar" e expurgo determinístico via jQuery `$('#dialogo_distancia_km').dialog('close')`.
+  2. `backend/app/engine/pages/contrato_page.py`: em `_configurar_destinatario_contrato`, adicionado `DialogGuard.dismiss_all_popups()` preventivo, timeout reduzido para 2.5s com auto-dismiss imediato, retry com `force=True` e `dispatch_event('click')`. Adicionada seleção resiliente no `<select>` (value `1` ou primeira opção válida).
+  3. `tests/test_contrato_page_antt.py`: adicionado teste unitário `test_configurar_destinatario_contrato_com_popup_interceptor`.
+- Validação: 103 testes aprovados no pytest (100% verde).
+- Riscos e pendências: nenhum risco; o destinatário é vinculado com sucesso sem esperar 45s.

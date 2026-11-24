@@ -49,10 +49,15 @@ class DialogGuard:
 
                 # Clica em botões de confirmação/fechamento
                 btn_selectors = [
+                    'div[aria-describedby="dialogo_distancia_km"] button',
+                    '#dialogo_distancia_km ~ .ui-dialog-buttonpane button',
                     '.ui-dialog:visible .ui-dialog-buttonpane button:has-text("OK")',
                     '.ui-dialog:visible .ui-dialog-buttonset button:has-text("OK")',
                     '.ui-dialog:visible button:has-text("OK")',
                     '.ui-dialog:visible .ui-button:has-text("OK")',
+                    '.ui-dialog:visible button:has-text("Sim")',
+                    '.ui-dialog:visible button:has-text("Confirmar")',
+                    '.ui-dialog:visible button:has-text("Continuar")',
                     '.ui-dialog:visible button.ui-dialog-titlebar-close',
                     '.ui-dialog:visible .ui-dialog-titlebar-close',
                 ]
@@ -68,9 +73,10 @@ class DialogGuard:
                 # Contingência DOM se overlay persistir
                 page.wait_for_timeout(200)
                 try:
-                    if page.locator('.ui-dialog:visible, .ui-widget-overlay:visible').count() > 0:
+                    if page.locator('.ui-dialog:visible, .ui-widget-overlay:visible, [aria-describedby="dialogo_distancia_km"]:visible').count() > 0:
                         page.evaluate("""() => {
                             if (window.jQuery && window.jQuery.fn && window.jQuery.fn.dialog) {
+                                try { window.jQuery('#dialogo_distancia_km').dialog('close'); } catch (e) {}
                                 try { window.jQuery('.ui-dialog-content').dialog('close'); } catch (e) {}
                             }
                             document.querySelectorAll('.ui-widget-overlay').forEach(el => el.remove());

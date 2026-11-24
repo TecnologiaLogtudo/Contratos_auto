@@ -229,13 +229,30 @@ class ContratoPage:
     def _configurar_destinatario_contrato(self, item: ItemContrato, delay_step: float) -> None:
         nro = item.nro_cotacao
         try:
+            DialogGuard.dismiss_all_popups(self.page, self.log, f"Item {nro}")
             self.page.locator('input[name="pesquisa_dados_enderecoDestinatarioContrato_id"]').fill("logtudo")
             time.sleep(delay_step)
-            self.page.locator('i[name="botaoPesquisa_dados_enderecoDestinatarioContrato_id"]').click()
+
+            # Clica no botão de pesquisa com auto-dismiss e retry se houver popup/overlay (ex: dialogo_distancia_km)
+            btn_pesquisa = self.page.locator('i[name="botaoPesquisa_dados_enderecoDestinatarioContrato_id"]')
+            try:
+                btn_pesquisa.click(timeout=2500)
+            except Exception:
+                DialogGuard.dismiss_all_popups(self.page, self.log, f"Item {nro}")
+                try:
+                    btn_pesquisa.click(timeout=2500, force=True)
+                except Exception:
+                    btn_pesquisa.dispatch_event('click')
 
             dest_sel = self.page.locator('select[name="dados_enderecoDestinatarioContrato_id"]')
             dest_sel.wait_for(state="attached", timeout=8000)
-            dest_sel.select_option(value="1")
+
+            try:
+                dest_sel.select_option(value="1", timeout=3000)
+            except Exception:
+                opts = dest_sel.locator("option").all()
+                val = next((opt.get_attribute("value") for opt in opts if opt.get_attribute("value")), "1")
+                dest_sel.select_option(value=val)
             time.sleep(delay_step)
         except Exception as e:
             self.log(f"[F5] [Item {nro}] Aviso ao vincular Destinatário Contrato: {e}", "DEBUG")
