@@ -135,3 +135,23 @@ Memória compartilhada para coordenação de trabalho entre agentes e projetos. 
   3. `tests/test_contrato_page_antt.py`: adicionado teste unitário `test_configurar_destinatario_contrato_com_popup_interceptor`.
 - Validação: 103 testes aprovados no pytest (100% verde).
 - Riscos e pendências: nenhum risco; o destinatário é vinculado com sucesso sem esperar 45s.
+
+## 2026-11-24 — Milestone M1: Correções Críticas do Fluxo, Isolamento de Erros e Mitigação de Timeout Fase 4->5
+- Objetivo: implementar as correções do Milestone M1 resolvendo os problemas R1 (seletor de logout Playwright), R2 (navegação determinística entre itens), R3 (reset defensivo de sessão no runner), R4 (persistência imediata de status ERRO no worker) e R5 (mitigação de timeout e modais bloqueantes na transição da Fase 4 para Fase 5).
+- Mudanças realizadas:
+  1. `backend/app/engine/pages/login_page.py` (R1): corrigido o seletor de logout de `a:has-text('Sair'), button:has-text('Sair'), text='Sair'` para `:is(a, button):has-text('Sair')`, eliminando a exceção de sintaxe CSS do Playwright (`Unexpected token "="`).
+  2. `backend/app/engine/contract_runner.py` (R2 e R3):
+     - R2: remoção da guarda condicional frágil de correspondência parcial de URL em `process_single_item` e `run()`, forçando a navegação incondicional para `URL_CONHECIMENTO_FORM` e chamada a `DialogGuard.dismiss_all_popups` entre cotações consecutivas.
+     - R3: encapsulamento da chamada `self._reset_session(error=err)` em bloco defensivo `try/except Exception as reset_err:` com log de aviso e telemetria, assegurando o retorno incondicional do objeto `ItemResult(status=ItemStatus.ERRO)`.
+  3. `backend/app/infrastructure/worker.py` (R4): no loop de itens de `_run_job`, isolado o processamento de cada item em `try/except Exception as item_exc:`. Qualquer falha ou `result.sucesso == False` agora persiste imediatamente o status `ItemStatus.ERRO` no SQLite (`self.repo.update_item_result`), marca o erro no `ExcelProcessor` (`excel_proc.mark_error`), salva o estado da planilha em disco (`_save_and_register_report`) com proteção contra duplicidade de artefatos, e permite que o lote continue para os itens seguintes.
+  4. `backend/app/engine/dialog_guard.py` e `backend/app/engine/pages/frete_page.py` (R5):
+     - `DialogGuard`: expandido para reconhecer botões afirmativos em diálogos jQuery UI e modais SweetAlert 1 & 2 ("Sim", "Confirmar", "Continuar", "Prosseguir", "Ciente", "Aceitar", etc.) e expurgar completamente overlays impeditivos (`.ui-widget-overlay, .swal2-container, .sweet-overlay, .modal-backdrop, .blockUI`). Enriquecida a detecção de erro de negócio do portal para cobrir SweetAlert, Bootstrap e caixas de mensagem.
+     - `FretePage`: em `_aguardar_transicao_fase5`, adicionados seletores expandidos da Fase 5, detecção precoce de validações client-side com erro na Fase 4 (como `.swstatus-input-error`), auto-dismiss de modais afirmativos e registro de telemetria estruturada diagnóstica antes do timeout.
+  5. `pytest.ini`: criado na raiz configurando `testpaths = tests` e `addopts = --ignore=tests/test_erro_negocio_portal.py`.
+  6. Testes unitários novos e enriquecidos:
+     - `tests/test_session_recovery.py`: testes para seletor de logout e conformidade sintática (R1).
+     - `tests/test_contract_runner.py`: testes para navegação incondicional de formulário (R2) e retorno garantido de erro no reset de sessão (R3).
+     - `tests/test_worker_error_handling.py`: testes para persistência imediata de ERRO no SQLite/Excel e continuidade do lote no worker (R4).
+     - `tests/test_transicao_fase4_5.py`: testes para sucesso imediato, modais SweetAlert, avisos de peso/cubagem, aborto antecipado com erro de negócio/validação e telemetria de diagnóstico no timeout (R5).
+- Validação: 116 testes executados e 116 aprovados (100% verde) em 8.92s via `.venv\Scripts\python.exe -m pytest`.
+- Riscos e pendências: risco nulo; todas as alterações mantêm isolamento rigoroso, retrocompatibilidade com fluxos existentes e suíte completa de testes unitários herméticos.

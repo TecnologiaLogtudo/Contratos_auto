@@ -120,14 +120,15 @@ class ContractRunner:
         self.log(f"[F2] Iniciando cotação {nro} (Remetente: {item.remetente}, Cidade: {item.cidade}/{item.uf})", "INFO")
 
         try:
-            # Fase 2: Extração de Metadados (se Lactalis Especial)
+            # Fase 2: Extração de Metadados (se Lactalis Especial) ou Abertura de Formulário Limpo
             with trace_span('contratos.fase2.preparacao'):
                 if isinstance(strategy, LactalisSpecialBaseStrategy) and self.cotacoes_page:
                     self.cotacoes_page.extrair_metadados_cotacao(item, delay_step=self.delay_etapas)
                 else:
-                    if "/rotinas/formulario.php" not in self.page.url or "trans_conhecimento" not in self.page.url:
-                        self.page.goto(URL_CONHECIMENTO_FORM, wait_until="load", timeout=45000)
-                        time.sleep(self.delay_fases)
+                    self.log(f"[F2] [Item {nro}] Abrindo novo formulário limpo de Conhecimento...", "DEBUG")
+                    self.page.goto(URL_CONHECIMENTO_FORM, wait_until="load", timeout=45000)
+                    time.sleep(self.delay_fases)
+                    DialogGuard.dismiss_all_popups(self.page, self.log, f"Item {nro}")
 
             # Fase 3: Conhecimento
             with trace_span('contratos.fase3.conhecimento'):
@@ -169,7 +170,11 @@ class ContractRunner:
             duration = time.time() - item_start
             self.log(f"[F5] FALHA na cotação {nro}: {err_msg}", "ERRO")
             self._take_screenshot(f"falha_cotacao_{nro}")
-            self._reset_session(error=err)
+            try:
+                self._reset_session(error=err)
+            except Exception as reset_err:
+                report_exception(reset_err, component="contract_session_reset")
+                self.log(f"[Recovery] Falha defensiva ao resetar sessão após erro no item {nro}: {reset_err}", "AVISO")
             return ItemResult(
                 nro_cotacao=nro,
                 status=ItemStatus.ERRO,
@@ -231,10 +236,11 @@ class ContractRunner:
                     if isinstance(strategy, LactalisSpecialBaseStrategy):
                         self.cotacoes_page.extrair_metadados_cotacao(item, delay_step=self.delay_etapas)
                     else:
-                        # Navega direto para o formulário de Conhecimento
-                        if "/rotinas/formulario.php" not in self.page.url or "trans_conhecimento" not in self.page.url:
-                            self.page.goto(URL_CONHECIMENTO_FORM, wait_until="load", timeout=45000)
-                            time.sleep(self.delay_fases)
+                        # Navega direto e incondicionalmente para novo formulário limpo de Conhecimento
+                        self.log(f"[F2] [Item {nro}] Abrindo novo formulário limpo de Conhecimento...", "DEBUG")
+                        self.page.goto(URL_CONHECIMENTO_FORM, wait_until="load", timeout=45000)
+                        time.sleep(self.delay_fases)
+                        DialogGuard.dismiss_all_popups(self.page, self.log, f"Item {nro}")
 
                     self._check_pause()
                     # Fase 3 - Conhecimento
@@ -274,7 +280,11 @@ class ContractRunner:
                     self.processor.save_output(self.output_filepath)
 
                     # Reset de sessão seguro após erro para não contaminar a próxima cotação
-                    self._reset_session(error=err)
+                    try:
+                        self._reset_session(error=err)
+                    except Exception as reset_err:
+                        report_exception(reset_err, component="contract_session_reset")
+                        self.log(f"[Recovery] Falha defensiva ao resetar sessão após erro no item {nro}: {reset_err}", "AVISO")
 
                 time.sleep(self.delay_fases)
 

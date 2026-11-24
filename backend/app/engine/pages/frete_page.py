@@ -105,9 +105,15 @@ class FretePage:
 
         # 12. Avança para a Fase 5 / Salva o Conhecimento
         self.log(f"[F4] [Item {nro}] Etapa 9: Salvando Conhecimento e avançando para a Fase 5...", "DEBUG")
+        DialogGuard.dismiss_all_popups(self.page, self.log, f"Item {nro}")
         try:
             btn_salvar = self.page.locator('#botaoSubmit, input[type="submit"][value*="Salvar"], button:has-text("Salvar"), #botao_avancar, button:has-text("Avançar")').first
-            btn_salvar.click()
+            try:
+                btn_salvar.click(timeout=5000)
+            except Exception:
+                # Retry forçado caso interceptado por modal ou overlay
+                DialogGuard.dismiss_all_popups(self.page, self.log, f"Item {nro}")
+                btn_salvar.click(force=True, timeout=5000)
         except Exception as e:
             raise FormFillError(f"Falha ao clicar no botão Salvar/Avançar: {e}", field_name="botao_salvar", step="Fase 4")
 
@@ -416,7 +422,12 @@ class FretePage:
 
     def _aguardar_transicao_fase5(self, item: ItemContrato) -> None:
         nro = item.nro_cotacao
-        primeiro_campo_fase5 = 'input[name="dados_dtFimViagem"], input[name="busca_nDoc"], [id="dados_dtFimViagem"], button:has-text("Emitir contrato"), a:has-text("Emitir contrato")'
+        primeiro_campo_fase5 = (
+            'input[name="dados_dtFimViagem"], input[name="busca_nDoc"], [id="dados_dtFimViagem"], '
+            'input[name="dados_kms"], select[name="dados_perfisApropriacao_id"], #botao_cadastrar, '
+            'button:has-text("Emitir contrato"), a:has-text("Emitir contrato"), '
+            ':is(li, a).active:has-text("Contrato de frete")'
+        )
         timeout_limit = time.time() + 30
 
         while time.time() < timeout_limit:
@@ -425,7 +436,32 @@ class FretePage:
             # (ex.: data de emissão x data de pagamento, status da cotação)
             erro_negocio = DialogGuard.detectar_erro_negocio(self.page, self.log, f"[Item {nro}] ")
             if erro_negocio:
-                raise NavigationError(f"Erro de negócio do portal na transição Fase 4->5: {erro_negocio}", url=self.page.url, step="Transição Fase 4->5")
+                raise NavigationError(
+                    f"Erro de negócio do portal na transição Fase 4->5: {erro_negocio}",
+                    url=self.page.url,
+                    step="Transição Fase 4->5",
+                )
+
+            # Detecção precoce de campos obrigatórios pendentes ou com erro na Fase 4
+            try:
+                err_inputs = self.page.locator('.swstatus-input-error:visible')
+                if err_inputs.count() > 0:
+                    nomes_campos = []
+                    for i in range(min(err_inputs.count(), 3)):
+                        el = err_inputs.nth(i)
+                        name_attr = el.get_attribute("name") or el.get_attribute("id") or "campo_obrigatorio"
+                        nomes_campos.append(name_attr)
+                    lista_str = ", ".join(nomes_campos)
+                    raise FormFillError(
+                        f"Validação da Fase 4 pendente no portal: campo(s) com erro: {lista_str}",
+                        field_name=nomes_campos[0] if nomes_campos else "campo_fase4",
+                        step="Fase 4",
+                    )
+            except FormFillError:
+                raise
+            except Exception:
+                pass
+
             try:
                 if self.page.locator(primeiro_campo_fase5).is_visible(timeout=300):
                     return
@@ -437,4 +473,31 @@ class FretePage:
         try:
             self.page.locator(primeiro_campo_fase5).wait_for(state="visible", timeout=5000)
         except PlaywrightTimeoutError:
-            raise NavigationError("Timeout aguardando carregamento da Fase 5.", url=self.page.url, step="Transição Fase 4->5")
+            diag_url = self.page.url
+            diag_title = ""
+            try:
+                diag_title = self.page.title()
+            except Exception:
+                pass
+
+            diag_aba = "Desconhecida"
+            try:
+                if self.page.locator(':is(li, a).active').count() > 0:
+                    diag_aba = self.page.locator(':is(li, a).active').first.inner_text().strip()
+            except Exception:
+                pass
+
+            diag_msg_modal = ""
+            try:
+                modals = self.page.locator('.ui-dialog:visible, .swal2-modal:visible, .sweet-alert:visible')
+                if modals.count() > 0:
+                    diag_msg_modal = modals.first.inner_text().strip()
+            except Exception:
+                pass
+
+            diag_detalhes = f"URL: {diag_url} | Aba: {diag_aba} | Título: {diag_title}"
+            if diag_msg_modal:
+                diag_detalhes += f" | Modal: {diag_msg_modal}"
+
+            self.log(f"[F4] [Item {nro}] DIAGNÓSTICO TIMEOUT FASE 4->5: {diag_detalhes}", "ERRO")
+            raise NavigationError("Timeout aguardando carregamento da Fase 5.", url=diag_url, step="Transição Fase 4->5")

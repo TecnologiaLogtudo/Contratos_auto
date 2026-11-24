@@ -164,6 +164,19 @@ def test_login_page_logout():
     mock_menu.hover.assert_called_once()
     mock_sair.click.assert_called_once()
     mock_context.clear_cookies.assert_called_once()
+    mock_page.locator.assert_any_call(":is(a, button):has-text('Sair')")
+    # Garante que o seletor problemático com text='Sair' não foi utilizado
+    called_selectors = [call.args[0] for call in mock_page.locator.call_args_list if call.args]
+    assert not any("text='Sair'" in sel for sel in called_selectors)
+
+
+def test_logout_selector_syntax():
+    """Valida que o seletor de logout está em conformidade com as regras sintáticas do Playwright."""
+    import inspect
+    from backend.app.engine.pages.login_page import LoginPage
+    source = inspect.getsource(LoginPage.logout)
+    assert ":is(a, button):has-text('Sair')" in source
+    assert "text='Sair'" not in source
 
 
 def test_recover_hard_reset_when_error_passed(recovery_manager):

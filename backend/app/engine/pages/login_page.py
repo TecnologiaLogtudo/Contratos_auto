@@ -112,7 +112,7 @@ class LoginPage:
             if user_menu.is_visible():
                 user_menu.hover(timeout=3000)
 
-            sair_locator = self.page.locator("a:has-text('Sair'), button:has-text('Sair'), text='Sair'").first
+            sair_locator = self.page.locator(":is(a, button):has-text('Sair')").first
             if sair_locator.is_visible():
                 sair_locator.click(timeout=3000)
                 self.page.wait_for_timeout(500)

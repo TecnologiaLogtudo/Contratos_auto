@@ -52,12 +52,25 @@ class DialogGuard:
                     'div[aria-describedby="dialogo_distancia_km"] button',
                     '#dialogo_distancia_km ~ .ui-dialog-buttonpane button',
                     '.ui-dialog:visible .ui-dialog-buttonpane button:has-text("OK")',
+                    '.ui-dialog:visible .ui-dialog-buttonpane button:has-text("Sim")',
+                    '.ui-dialog:visible .ui-dialog-buttonpane button:has-text("Confirmar")',
+                    '.ui-dialog:visible .ui-dialog-buttonpane button:has-text("Continuar")',
+                    '.ui-dialog:visible .ui-dialog-buttonpane button:has-text("Prosseguir")',
+                    '.ui-dialog:visible .ui-dialog-buttonpane button:has-text("Ciente")',
+                    '.ui-dialog:visible .ui-dialog-buttonpane button:has-text("Aceitar")',
+                    '.ui-dialog:visible .ui-dialog-buttonpane button',
                     '.ui-dialog:visible .ui-dialog-buttonset button:has-text("OK")',
+                    '.ui-dialog:visible .ui-dialog-buttonset button:has-text("Sim")',
+                    '.ui-dialog:visible .ui-dialog-buttonset button:has-text("Confirmar")',
+                    '.ui-dialog:visible .ui-dialog-buttonset button:has-text("Continuar")',
                     '.ui-dialog:visible button:has-text("OK")',
                     '.ui-dialog:visible .ui-button:has-text("OK")',
                     '.ui-dialog:visible button:has-text("Sim")',
                     '.ui-dialog:visible button:has-text("Confirmar")',
                     '.ui-dialog:visible button:has-text("Continuar")',
+                    '.ui-dialog:visible button:has-text("Prosseguir")',
+                    '.ui-dialog:visible button:has-text("Ciente")',
+                    '.ui-dialog:visible button:has-text("Aceitar")',
                     '.ui-dialog:visible button.ui-dialog-titlebar-close',
                     '.ui-dialog:visible .ui-dialog-titlebar-close',
                 ]
@@ -73,13 +86,13 @@ class DialogGuard:
                 # Contingência DOM se overlay persistir
                 page.wait_for_timeout(200)
                 try:
-                    if page.locator('.ui-dialog:visible, .ui-widget-overlay:visible, [aria-describedby="dialogo_distancia_km"]:visible').count() > 0:
+                    if page.locator('.ui-dialog:visible, .ui-widget-overlay:visible, .swal2-container:visible, .sweet-overlay:visible, [aria-describedby="dialogo_distancia_km"]:visible').count() > 0:
                         page.evaluate("""() => {
                             if (window.jQuery && window.jQuery.fn && window.jQuery.fn.dialog) {
                                 try { window.jQuery('#dialogo_distancia_km').dialog('close'); } catch (e) {}
                                 try { window.jQuery('.ui-dialog-content').dialog('close'); } catch (e) {}
                             }
-                            document.querySelectorAll('.ui-widget-overlay').forEach(el => el.remove());
+                            document.querySelectorAll('.ui-widget-overlay, .swal2-container, .sweet-overlay, .modal-backdrop, .blockUI').forEach(el => el.remove());
                             document.querySelectorAll('.ui-dialog').forEach(el => el.style.display = 'none');
                         }""")
                 except Exception:
@@ -89,14 +102,40 @@ class DialogGuard:
         except Exception:
             pass
 
-        # 2. SweetAlert2 & Outros Modais
+        # 2. SweetAlert (v1 e v2) & Modais Genéricos / Bootstrap
         other_selectors = [
-            'button:has-text("OK")',
-            'input[type="button"][value="OK"]',
-            'input[type="submit"][value="OK"]',
-            'a:has-text("OK")',
+            # SweetAlert 2
             '.swal2-confirm',
+            '.swal2-actions button.swal2-confirm',
+            '.swal2-actions button:not(.swal2-cancel)',
             '.swal2-modal button',
+            # SweetAlert 1
+            '.sweet-alert button.confirm',
+            '.sweet-alert .sa-confirm-button-container button',
+            # Botões afirmativos comuns
+            'button:has-text("OK")',
+            'button:has-text("Sim")',
+            'button:has-text("Confirmar")',
+            'button:has-text("Continuar")',
+            'button:has-text("Prosseguir")',
+            'button:has-text("Ciente")',
+            'button:has-text("Aceitar")',
+            'button:has-text("Concordo")',
+            'button:has-text("Entendi")',
+            'input[type="button"][value="OK"]',
+            'input[type="button"][value="Sim"]',
+            'input[type="button"][value="Confirmar"]',
+            'input[type="button"][value="Continuar"]',
+            'input[type="submit"][value="OK"]',
+            'input[type="submit"][value="Sim"]',
+            'input[type="submit"][value="Confirmar"]',
+            'a:has-text("OK")',
+            'a:has-text("Sim")',
+            'a:has-text("Confirmar")',
+            'a:has-text("Continuar")',
+            'a:has-text("Prosseguir")',
+            '.modal:visible .modal-footer button.btn-primary',
+            '.modal:visible .modal-footer button:not(.btn-secondary)',
             '.modal-footer button',
         ]
         for sel in other_selectors:
@@ -113,8 +152,11 @@ class DialogGuard:
 
         # 3. Remoção de overlays bloqueadores remanescentes
         try:
-            if page.locator('.ui-widget-overlay:visible').count() > 0:
-                page.evaluate("() => document.querySelectorAll('.ui-widget-overlay').forEach(el => el.remove())")
+            overlay_loc = page.locator('.ui-widget-overlay:visible, .swal2-container:visible, .sweet-overlay:visible, .modal-backdrop:visible, .blockUI:visible')
+            if overlay_loc.count() > 0:
+                page.evaluate("""() => {
+                    document.querySelectorAll('.ui-widget-overlay, .swal2-container, .sweet-overlay, .modal-backdrop, .blockUI').forEach(el => el.remove());
+                }""")
                 dismissed = True
         except Exception:
             pass
@@ -129,21 +171,29 @@ class DialogGuard:
     ) -> Optional[str]:
         """
         Detecta o alerta genérico de erro de negócio do portal e-Login
-        (div.rotina-generica.alert-message.error) e extrai o motivo específico
-        de <p class="regular-small-text"> (ex.: "A data de emissão não pode ser
-        ser maior que a data programada do saldo.", "Status da cotação não
-        permite editar a mesma."). Retorna a mensagem ou None se não houver erro.
+        (div.rotina-generica.alert-message.error, SweetAlert, alertas Bootstrap, etc.)
+        e extrai o motivo específico. Retorna a mensagem ou None se não houver erro.
         """
-        try:
-            loc = page.locator('div.rotina-generica.alert-message.error p.regular-small-text')
-            if loc.count() > 0 and loc.first.is_visible():
-                msg = " ".join(loc.first.inner_text().split())
-                if msg:
-                    if log_callback:
-                        log_callback(f"[ErroNegocio] {context_prefix}{msg}".strip(), "ERRO")
-                    return msg
-        except Exception:
-            pass
+        error_selectors = [
+            'div.rotina-generica.alert-message.error p.regular-small-text',
+            'div.rotina-generica.alert-message.error',
+            '.alert-danger:visible',
+            '.alert-error:visible',
+            '.swal2-html-container:visible',
+            '.sweet-alert p:visible',
+        ]
+        for sel in error_selectors:
+            try:
+                loc = page.locator(sel)
+                if loc.count() > 0 and loc.first.is_visible():
+                    raw_text = loc.first.inner_text().strip()
+                    msg = " ".join(raw_text.split())
+                    if msg:
+                        if log_callback:
+                            log_callback(f"[ErroNegocio] {context_prefix}{msg}".strip(), "ERRO")
+                        return msg
+            except Exception:
+                continue
         return None
 
     @staticmethod

@@ -95,7 +95,18 @@ class JobWorker:
 
             out_excel = self.artifacts.get_job_dir(self.job_id) / f"{self.job_id}.xlsx"
             excel_proc.save_output(out_excel)
-            self.artifacts.register_excel_report(self.job_id, out_excel)
+            # Evita duplicar registro de artefato EXCEL_RESULT nos passos intermediários
+            try:
+                existing_artifacts = self.repo.list_job_artifacts(self.job_id)
+                has_excel_artifact = any(
+                    (isinstance(a, dict) and a.get("artifact_type") == "EXCEL_RESULT")
+                    for a in existing_artifacts
+                )
+            except Exception:
+                has_excel_artifact = False
+
+            if not has_excel_artifact:
+                self.artifacts.register_excel_report(self.job_id, out_excel)
             return out_excel
         except Exception as e:
             logger.error(f"Erro ao gerar/salvar relatório consolidado do Job {self.job_id}: {e}")
@@ -218,26 +229,49 @@ class JobWorker:
                     status=ItemStatus.PENDENTE,
                 )
 
-                # Executa a linha individualmente
-                with watch_item(self.job_id):
-                    result = runner.process_single_item(item)
-                item_duration = time.time() - item_start
+                # Executa a linha individualmente com isolamento defensivo por item
+                try:
+                    with watch_item(self.job_id):
+                        result = runner.process_single_item(item)
+                    item_duration = time.time() - item_start
 
-                # Persiste o resultado unitário imediatamente no SQLite
-                if result.sucesso:
-                    excel_proc.mark_success(item.nro_cotacao)
-                    self.repo.update_item_result(
-                        job_id=self.job_id,
-                        nro_cotacao=item.nro_cotacao,
-                        status=ItemStatus.CONCLUIDO,
-                        cte_number=result.cte_number,
-                        extracted_nf=item.extracted_nf,
-                        extracted_nro_pedido=item.extracted_nro_pedido,
-                        extracted_obs_interna=item.extracted_obs_interna,
-                        duration_seconds=item_duration,
-                    )
-                else:
-                    motivo = result.motivo_erro or "Erro não identificado"
+                    # Persiste o resultado unitário imediatamente no SQLite
+                    if result.sucesso:
+                        excel_proc.mark_success(item.nro_cotacao)
+                        self.repo.update_item_result(
+                            job_id=self.job_id,
+                            nro_cotacao=item.nro_cotacao,
+                            status=ItemStatus.CONCLUIDO,
+                            cte_number=result.cte_number,
+                            extracted_nf=item.extracted_nf,
+                            extracted_nro_pedido=item.extracted_nro_pedido,
+                            extracted_obs_interna=item.extracted_obs_interna,
+                            duration_seconds=item_duration,
+                        )
+                    else:
+                        motivo = result.motivo_erro or "Erro não identificado"
+                        excel_proc.mark_error(item.nro_cotacao, motivo)
+                        self.repo.update_item_result(
+                            job_id=self.job_id,
+                            nro_cotacao=item.nro_cotacao,
+                            status=ItemStatus.ERRO,
+                            error_message=motivo,
+                            duration_seconds=item_duration,
+                        )
+                        self._save_and_register_report(excel_proc)
+
+                        # Se houver captura de tela em caso de erro
+                        if runner.page:
+                            try:
+                                sc_bytes = runner.page.screenshot(full_page=True)
+                                self.artifacts.save_error_screenshot(self.job_id, item.nro_cotacao, sc_bytes)
+                            except Exception as e:
+                                logger.error(f"Falha ao salvar screenshot de erro: {e}")
+                except Exception as item_exc:
+                    report_exception(item_exc, component="worker_item")
+                    item_duration = time.time() - item_start
+                    motivo = f"Exceção durante processamento do item: {item_exc}"
+                    logger.exception(f"Erro não tratado no item {item.nro_cotacao}: {item_exc}")
                     excel_proc.mark_error(item.nro_cotacao, motivo)
                     self.repo.update_item_result(
                         job_id=self.job_id,
@@ -246,8 +280,7 @@ class JobWorker:
                         error_message=motivo,
                         duration_seconds=item_duration,
                     )
-
-                    # Se houver captura de tela em caso de erro
+                    self._save_and_register_report(excel_proc)
                     if runner.page:
                         try:
                             sc_bytes = runner.page.screenshot(full_page=True)

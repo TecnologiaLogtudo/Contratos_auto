@@ -6,9 +6,10 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 import pytest
 
-from backend.app.domain.models import ItemContrato, ItemStatus
+from backend.app.domain.models import ItemContrato, ItemStatus, ItemResult
+from backend.app.domain.errors import AutomationError
 from backend.app.engine.excel_processor import ExcelProcessor
-from backend.app.engine.contract_runner import ContractRunner
+from backend.app.engine.contract_runner import ContractRunner, URL_CONHECIMENTO_FORM
 from backend.app.engine.browser_factory import BrowserConfig
 
 
@@ -150,5 +151,59 @@ def test_contract_runner_reset_session_passes_error_to_recovery():
             error=simulated_err,
             force_hard_reset=False,
         )
+
+
+def test_process_single_item_navigates_to_clean_form_unconditionally():
+    """Valida R2: A navegação para URL_CONHECIMENTO_FORM e dismiss_all_popups ocorre incondicionalmente."""
+    runner = ContractRunner(usuario="u", senha="p")
+    mock_page = MagicMock()
+    # Simula URL já estando na rota de formulário do item anterior
+    mock_page.url = "https://logtudo.e-login.net/versoes/versao5.0/rotinas/formulario.php?rotina=trans_conhecimento"
+    mock_page.is_closed.return_value = False
+    runner.page = mock_page
+    runner.conhecimento_page = MagicMock()
+    runner.frete_page = MagicMock()
+    runner.contrato_page = MagicMock()
+    runner.cotacoes_page = MagicMock()
+
+    item = ItemContrato(nro_cotacao="555", remetente="Latam", status=ItemStatus.PENDENTE)
+
+    with patch("backend.app.engine.contract_runner.DialogGuard.dismiss_all_popups") as mock_dismiss:
+        res = runner.process_single_item(item)
+
+    assert res.sucesso is True
+    assert res.status == ItemStatus.CONCLUIDO
+    # Verifica que page.goto foi chamado incondicionalmente com URL_CONHECIMENTO_FORM
+    mock_page.goto.assert_called_once_with(URL_CONHECIMENTO_FORM, wait_until="load", timeout=45000)
+    mock_dismiss.assert_called_once_with(mock_page, runner.log, "Item 555")
+
+
+def test_process_single_item_returns_error_even_if_reset_session_raises():
+    """Valida R3: Se _reset_session falhar no bloco except, process_single_item ainda retorna ItemResult(status=ERRO)."""
+    runner = ContractRunner(usuario="u", senha="p")
+    mock_page = MagicMock()
+    mock_page.url = URL_CONHECIMENTO_FORM
+    mock_page.is_closed.return_value = False
+    runner.page = mock_page
+    runner.conhecimento_page = MagicMock()
+    runner.frete_page = MagicMock()
+    runner.contrato_page = MagicMock()
+    runner.cotacoes_page = MagicMock()
+
+    # Simula falha na Fase 4
+    runner.frete_page.preencher_fase4.side_effect = RuntimeError("Falha simulada na Fase 4")
+
+    # Simula falha catastrófica no reset de sessão
+    runner._reset_session = MagicMock(side_effect=AutomationError("Falha irrecuperável de sessão"))
+
+    item = ItemContrato(nro_cotacao="9999", remetente="Latam", status=ItemStatus.PENDENTE)
+    result = runner.process_single_item(item)
+
+    assert result.sucesso is False
+    assert result.status == ItemStatus.ERRO
+    assert result.nro_cotacao == "9999"
+    assert "Falha simulada na Fase 4" in result.motivo_erro
+    runner._reset_session.assert_called_once()
+
 
 
